@@ -6,25 +6,49 @@ import { useMemo, useState } from "react";
 import { z } from "zod";
 import {
   CompositionProps,
-  defaultMyCompProps,
-  DURATION_IN_FRAMES,
   VIDEO_FPS,
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
 } from "../../types/constants";
+import { ClipUploader, UploadedClip } from "../components/ClipUploader";
 import { RenderControls } from "../components/RenderControls";
 import { Spacing } from "../components/Spacing";
 import { Tips } from "../components/Tips";
 import { Main } from "../remotion/MyComp/Main";
 
 const Home: NextPage = () => {
-  const [text, setText] = useState<string>(defaultMyCompProps.title);
+  const [uploadedClips, setUploadedClips] = useState<UploadedClip[]>([]);
 
+  // Only include clips with a real, usable duration — clips still showing
+  // "reading duration…" (null) or that failed validation are deliberately
+  // left out, rather than letting a bad value corrupt the total.
   const inputProps: z.infer<typeof CompositionProps> = useMemo(() => {
     return {
-      title: text,
+      clips: uploadedClips
+        .filter(
+          (clip): clip is UploadedClip & { durationInFrames: number } =>
+            clip.durationInFrames !== null &&
+            Number.isFinite(clip.durationInFrames) &&
+            clip.durationInFrames > 0,
+        )
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map((clip) => ({
+          id: clip.id,
+          src: clip.src,
+          order: clip.order,
+          durationInFrames: clip.durationInFrames,
+        })),
     };
-  }, [text]);
+  }, [uploadedClips]);
+
+  const totalDurationInFrames = useMemo(() => {
+    const total = inputProps.clips.reduce(
+      (sum, clip) => sum + clip.durationInFrames,
+      0,
+    );
+    return Number.isFinite(total) ? Math.max(total, 1) : 1;
+  }, [inputProps]);
 
   return (
     <div>
@@ -33,13 +57,11 @@ const Home: NextPage = () => {
           <Player
             component={Main}
             inputProps={inputProps}
-            durationInFrames={DURATION_IN_FRAMES}
+            durationInFrames={totalDurationInFrames}
             fps={VIDEO_FPS}
             compositionHeight={VIDEO_HEIGHT}
             compositionWidth={VIDEO_WIDTH}
             style={{
-              // Can't use tailwind class for width since player's default styles take presedence over tailwind's,
-              // but not over inline styles
               width: "100%",
             }}
             controls
@@ -48,11 +70,9 @@ const Home: NextPage = () => {
             initiallyMuted
           />
         </div>
-        <RenderControls
-          text={text}
-          setText={setText}
-          inputProps={inputProps}
-        ></RenderControls>
+        <ClipUploader onClipsChange={setUploadedClips} />
+        <Spacing></Spacing>
+        <RenderControls inputProps={inputProps}></RenderControls>
         <Spacing></Spacing>
         <Spacing></Spacing>
         <Spacing></Spacing>

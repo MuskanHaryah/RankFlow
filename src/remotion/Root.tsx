@@ -21,6 +21,20 @@ export const RemotionRoot: React.FC = () => {
         width={VIDEO_WIDTH}
         height={VIDEO_HEIGHT}
         defaultProps={defaultMyCompProps}
+        calculateMetadata={async ({ props }) => {
+          // Total video length = sum of every clip's duration. This runs
+          // automatically whenever the clips array changes, so the CLI
+          // render (Step 4) always uses the correct real total — we never
+          // have to manually keep a duration number in sync by hand.
+          const totalDuration = props.clips.reduce(
+            (sum, clip) => sum + clip.durationInFrames,
+            0,
+          );
+
+          return {
+            durationInFrames: Math.max(totalDuration, 1),
+          };
+        }}
       />
       <Composition
         id="NextLogo"

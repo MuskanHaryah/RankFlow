@@ -1,58 +1,33 @@
-import { fontFamily, loadFont } from "@remotion/google-fonts/Inter";
-import {
-  AbsoluteFill,
-  Sequence,
-  spring,
-  useCurrentFrame,
-  useVideoConfig,
-} from "remotion";
+import { Video } from "@remotion/media";
+import { AbsoluteFill, Sequence } from "remotion";
 import { z } from "zod";
 import { CompositionProps } from "../../../types/constants";
-import { NextLogo } from "./NextLogo";
-import { Rings } from "./Rings";
-import { TextFade } from "./TextFade";
 
-loadFont("normal", {
-  subsets: ["latin"],
-  weights: ["400", "700"],
-});
-export const Main = ({ title }: z.infer<typeof CompositionProps>) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+export const Main = ({ clips }: z.infer<typeof CompositionProps>) => {
+  // Running total of frames consumed so far. Building the sequence this way
+  // guarantees no gaps and no overlaps by construction — each clip starts
+  // exactly where the previous one ended, because we're accumulating real
+  // durations, not guessing at fixed timing.
+  let startFrame = 0;
 
-  const transitionStart = 2 * fps;
-  const transitionDuration = 1 * fps;
-
-  const logoOut = spring({
-    fps,
-    frame,
-    config: {
-      damping: 200,
-    },
-    durationInFrames: transitionDuration,
-    delay: transitionStart,
-  });
+  const sortedClips = clips.slice().sort((a, b) => a.order - b.order);
 
   return (
-    <AbsoluteFill className="bg-white">
-      <Sequence durationInFrames={transitionStart + transitionDuration}>
-        <Rings outProgress={logoOut}></Rings>
-        <AbsoluteFill className="justify-center items-center">
-          <NextLogo outProgress={logoOut}></NextLogo>
-        </AbsoluteFill>
-      </Sequence>
-      <Sequence from={transitionStart + transitionDuration / 2}>
-        <TextFade>
-          <h1
-            className="text-[70px] font-bold"
-            style={{
-              fontFamily,
-            }}
+    <AbsoluteFill className="bg-black">
+      {sortedClips.map((clip) => {
+        const from = startFrame;
+        startFrame += clip.durationInFrames;
+
+        return (
+          <Sequence
+            key={clip.id}
+            from={from}
+            durationInFrames={clip.durationInFrames}
           >
-            {title}
-          </h1>
-        </TextFade>
-      </Sequence>
+            <Video src={clip.src} />
+          </Sequence>
+        );
+      })}
     </AbsoluteFill>
   );
 };
