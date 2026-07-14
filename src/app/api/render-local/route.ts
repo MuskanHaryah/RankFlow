@@ -68,7 +68,16 @@ export async function POST(req: NextRequest) {
   const outputFilename = `output-${Date.now()}.mp4`;
   const outputPath = path.join(outputDir, outputFilename);
 
-  const command = `npx remotion render src/remotion/index.ts ${COMP_NAME} "${outputPath}" --props="${propsPath}" --port=7777 --bundle-cache=false`;
+  // A random port per render (rather than a fixed one) so that two renders
+  // happening close together in time — e.g. testing in two tabs, or a
+  // second attempt started before the first finished — don't collide on
+  // the same port. We avoid letting Remotion auto-pick entirely, since it
+  // can end up choosing port 3000 (colliding with the Next.js dev server
+  // itself) if a PORT environment variable happens to be inherited from
+  // this very process.
+  const renderPort = 7000 + Math.floor(Math.random() * 1000);
+
+  const command = `npx remotion render src/remotion/index.ts ${COMP_NAME} "${outputPath}" --props="${propsPath}" --port=${renderPort} --bundle-cache=false --concurrency=1`;
 
   try {
     const { stdout, stderr } = await execAsync(command, {
@@ -91,16 +100,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
