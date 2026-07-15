@@ -1,6 +1,22 @@
 "use client";
 
+import {
+  closestCenter,
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "./Button";
 
 export type UploadedClip = {
   id: string;
@@ -86,11 +102,71 @@ const uploadClipToServer = async (file: File): Promise<string> => {
   return data.url as string;
 };
 
+/**
+ * A single draggable row in the clip list. Split out from the main
+ * component because useSortable() must be called once per draggable item,
+ * not once for the whole list.
+ */
+const SortableClipRow: React.FC<{ clip: UploadedClip }> = ({ clip }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: clip.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 text-sm bg-background"
+    >
+      <span
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing select-none px-1 text-subtitle"
+        title="Drag to reorder"
+      >
+        ⠿
+      </span>
+      <span>
+        #{clip.order} — {clip.file.name} (
+        {(clip.file.size / 1024 / 1024).toFixed(1)} MB) —{" "}
+        {clip.durationInFrames === null ? (
+          <span className="text-subtitle">reading duration…</span>
+        ) : (
+          <span>
+            {(clip.durationInFrames / FPS).toFixed(1)}s (
+            {clip.durationInFrames} frames)
+          </span>
+        )}
+        {" — "}
+        {clip.uploadStatus === "uploading" ? (
+          <span className="text-subtitle">uploading…</span>
+        ) : clip.uploadStatus === "done" ? (
+          <span className="text-green-500">uploaded</span>
+        ) : (
+          <span className="text-red-500">upload failed</span>
+        )}
+      </span>
+    </li>
+  );
+};
+
 export const ClipUploader: React.FC<{
   onClipsChange?: (clips: UploadedClip[]) => void;
 }> = ({ onClipsChange }) => {
   const [clips, setClips] = useState<UploadedClip[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
+
+  // A small activation distance prevents drags from firing on a plain
+  // click — without this, clicking anywhere on a row could accidentally
+  // trigger a drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
 
   useEffect(() => {
     onClipsChange?.(clips);
@@ -183,6 +259,36 @@ export const ClipUploader: React.FC<{
       });
     }, []);
 
+  // Dragging changes the array's order — but the Remotion composition
+  // reads the `order` field, not array position, so we reassign it here
+  // to match. This is the step that actually makes the reorder "real"
+  // rather than just visual.
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    setClips((prevClips) => {
+      const oldIndex = prevClips.findIndex((c) => c.id === active.id);
+      const newIndex = prevClips.findIndex((c) => c.id === over.id);
+      const reordered = arrayMove(prevClips, oldIndex, newIndex);
+      return reordered.map((clip, index) => ({ ...clip, order: index + 1 }));
+    });
+  }, []);
+
+  const handleShuffle = useCallback(() => {
+    setClips((prevClips) => {
+      const shuffled = [...prevClips];
+      // Fisher-Yates shuffle
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled.map((clip, index) => ({ ...clip, order: index + 1 }));
+    });
+  }, []);
+
   return (
     <div className="border border-unfocused-border-color p-geist rounded-geist bg-background text-foreground flex flex-col gap-3">
       <label htmlFor="clip-upload" className="text-sm font-medium">
@@ -198,30 +304,32 @@ export const ClipUploader: React.FC<{
       />
       {warning ? <p className="text-sm text-red-500">{warning}</p> : null}
       {clips.length > 0 ? (
-        <ul className="text-sm flex flex-col gap-1 mt-2">
-          {clips.map((clip) => (
-            <li key={clip.id}>
-              #{clip.order} — {clip.file.name} (
-              {(clip.file.size / 1024 / 1024).toFixed(1)} MB) —{" "}
-              {clip.durationInFrames === null ? (
-                <span className="text-subtitle">reading duration…</span>
-              ) : (
-                <span>
-                  {(clip.durationInFrames / FPS).toFixed(1)}s (
-                  {clip.durationInFrames} frames)
-                </span>
-              )}
-              {" — "}
-              {clip.uploadStatus === "uploading" ? (
-                <span className="text-subtitle">uploading…</span>
-              ) : clip.uploadStatus === "done" ? (
-                <span className="text-green-500">uploaded</span>
-              ) : (
-                <span className="text-red-500">upload failed</span>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-sm text-subtitle">
+              Drag ⠿ to reorder, or:
+            </span>
+            <Button disabled={clips.length < 2} onClick={handleShuffle}>
+              Shuffle
+            </Button>
+          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={clips.map((clip) => clip.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul className="flex flex-col gap-1">
+                {clips.map((clip) => (
+                  <SortableClipRow key={clip.id} clip={clip} />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        </>
       ) : null}
     </div>
   );
