@@ -18,6 +18,24 @@ import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "./Button";
 
+export type AnimationStyle =
+  | "fade"
+  | "slideUp"
+  | "pop"
+  | "typewriter"
+  | "glow"
+  | "bounceLetters";
+
+export const ANIMATION_STYLE_OPTIONS: { value: AnimationStyle; label: string }[] =
+  [
+    { value: "fade", label: "Fade in" },
+    { value: "slideUp", label: "Slide up" },
+    { value: "pop", label: "Pop" },
+    { value: "typewriter", label: "Typewriter + sparkle" },
+    { value: "glow", label: "Glow in" },
+    { value: "bounceLetters", label: "Bounce letters" },
+  ];
+
 export type UploadedClip = {
   id: string;
   file: File;
@@ -29,7 +47,7 @@ export type UploadedClip = {
   rank: number; // which badge slot (1..N) this clip is assigned to
   badgeType: "number" | "emoji";
   badgeEmoji: string; // only used when badgeType is "emoji"
-  animationStyle: "fade" | "slideUp" | "pop"; // entrance animation for this clip's title reveal
+  animationStyle: AnimationStyle; // entrance animation for this clip's title reveal
 };
 
 export type PlayingOrderMode = "manual" | "ascending" | "descending" | "shuffle";
@@ -149,10 +167,7 @@ const SortableClipRow: React.FC<{
   onRankChange: (id: string, rank: number) => void;
   onBadgeTypeChange: (id: string, badgeType: "number" | "emoji") => void;
   onBadgeEmojiChange: (id: string, emoji: string) => void;
-  onAnimationStyleChange: (
-    id: string,
-    animationStyle: "fade" | "slideUp" | "pop",
-  ) => void;
+  onAnimationStyleChange: (id: string, animationStyle: AnimationStyle) => void;
 }> = ({
   clip,
   clipCount,
@@ -261,16 +276,15 @@ const SortableClipRow: React.FC<{
         <select
           value={clip.animationStyle}
           onChange={(e) =>
-            onAnimationStyleChange(
-              clip.id,
-              e.target.value as "fade" | "slideUp" | "pop",
-            )
+            onAnimationStyleChange(clip.id, e.target.value as AnimationStyle)
           }
           className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
         >
-          <option value="fade">Fade in</option>
-          <option value="slideUp">Slide up</option>
-          <option value="pop">Pop</option>
+          {ANIMATION_STYLE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
       </div>
     </li>
@@ -286,6 +300,10 @@ export const ClipUploader: React.FC<{
   // derive play order from rank automatically. Shuffle randomizes it.
   const [playingOrderMode, setPlayingOrderMode] =
     useState<PlayingOrderMode>("manual");
+  // Just holds whatever's currently selected in the "apply to all" dropdown —
+  // not applied until the button next to it is clicked.
+  const [globalAnimationChoice, setGlobalAnimationChoice] =
+    useState<AnimationStyle>("fade");
 
   // A small activation distance prevents drags from firing on a plain
   // click — without this, clicking anywhere on a row could accidentally
@@ -486,11 +504,25 @@ export const ClipUploader: React.FC<{
   );
 
   const handleAnimationStyleChange = useCallback(
-    (id: string, animationStyle: "fade" | "slideUp" | "pop") => {
+    (id: string, animationStyle: AnimationStyle) => {
       setClips((prevClips) =>
         prevClips.map((clip) =>
           clip.id === id ? { ...clip, animationStyle } : clip,
         ),
+      );
+    },
+    [],
+  );
+
+  // A one-off bulk-set: applies the chosen style to every clip's
+  // animationStyle right now. It does NOT create a persistent "global mode"
+  // — each clip's dropdown remains independently editable afterward, same
+  // as before. Selecting a different clip's animation individually later
+  // simply overwrites that one clip's value, same as any other edit.
+  const handleApplyAnimationToAll = useCallback(
+    (animationStyle: AnimationStyle) => {
+      setClips((prevClips) =>
+        prevClips.map((clip) => ({ ...clip, animationStyle })),
       );
     },
     [],
@@ -552,6 +584,33 @@ export const ClipUploader: React.FC<{
               <Button onClick={handleShuffleAgain}>Shuffle again</Button>
             ) : null}
           </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-sm text-subtitle">
+              Apply animation to all clips
+            </label>
+            <select
+              value={globalAnimationChoice}
+              onChange={(e) =>
+                setGlobalAnimationChoice(e.target.value as AnimationStyle)
+              }
+              className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+            >
+              {ANIMATION_STYLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <Button
+              onClick={() => handleApplyAnimationToAll(globalAnimationChoice)}
+            >
+              Apply to all
+            </Button>
+          </div>
+          <p className="text-sm text-subtitle">
+            Applies once, to every clip's title reveal — you can still
+            override any single clip's animation individually afterward.
+          </p>
           <p className="text-sm text-subtitle">
             {playingOrderMode === "manual"
               ? "Drag ⠿ below to set exactly which clip plays when."

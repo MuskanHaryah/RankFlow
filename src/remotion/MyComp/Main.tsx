@@ -18,8 +18,108 @@ type ClipRange = Clip & { from: number; to: number };
 // on the later bright -> dim transition when the clip finishes.
 const REVEAL_DURATION = 20;
 
+/** Frames between each letter's animation start, for the staggered styles. */
+const LETTER_STAGGER = 2;
+
 /**
- * Wraps a revealed title in one of three entrance animations. `framesSinceStart`
+ * Letter-by-letter reveal with a small sparkle that pulses at the typing
+ * cursor while typing, then flares and fades once the title finishes typing.
+ * Typing speed scales with title length but stays within a sane range so a
+ * very long title doesn't feel sluggish and a very short one doesn't blip by.
+ */
+const TypewriterTitle: React.FC<{
+  text: string;
+  textStyle: React.CSSProperties;
+  framesSinceStart: number;
+}> = ({ text, textStyle, framesSinceStart }) => {
+  const typeDuration = Math.min(45, Math.max(18, text.length * 2));
+  const revealedFloat = interpolate(
+    framesSinceStart,
+    [0, typeDuration],
+    [0, text.length],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const charsToShow = Math.floor(revealedFloat);
+  const isTyping = charsToShow < text.length;
+
+  // While typing: a gentle pulse so the sparkle reads as "active" at the
+  // cursor. Once typing finishes: one quick flare-and-fade, then gone.
+  const sparkleOpacity = isTyping
+    ? interpolate(framesSinceStart % 8, [0, 4, 8], [0.35, 1, 0.35])
+    : interpolate(framesSinceStart - typeDuration, [0, 12], [1, 0], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
+  const sparkleScale = isTyping
+    ? 1
+    : interpolate(framesSinceStart - typeDuration, [0, 12], [1, 1.6], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
+
+  return (
+    <span style={textStyle}>
+      {text.slice(0, charsToShow)}
+      {sparkleOpacity > 0 ? (
+        <span
+          style={{
+            display: "inline-block",
+            marginLeft: 2,
+            opacity: sparkleOpacity,
+            transform: `scale(${sparkleScale})`,
+          }}
+        >
+          ✨
+        </span>
+      ) : null}
+    </span>
+  );
+};
+
+/**
+ * Each letter springs in one after another (a short stagger per letter)
+ * rather than the whole title moving as one block.
+ */
+const BounceLettersTitle: React.FC<{
+  text: string;
+  textStyle: React.CSSProperties;
+  framesSinceStart: number;
+  fps: number;
+}> = ({ text, textStyle, framesSinceStart, fps }) => {
+  return (
+    <span style={textStyle}>
+      {text.split("").map((char, i) => {
+        const localFrame = framesSinceStart - i * LETTER_STAGGER;
+        const bounce = spring({
+          frame: Math.max(0, localFrame),
+          fps,
+          config: { damping: 12, stiffness: 260, mass: 0.4 },
+        });
+        const opacity = interpolate(localFrame, [0, 6], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        });
+        const translateY = interpolate(bounce, [0, 1], [10, 0]);
+
+        return (
+          <span
+            key={i}
+            style={{
+              display: "inline-block",
+              opacity,
+              transform: `translateY(${translateY}px) scale(${Math.max(bounce, 0)})`,
+            }}
+          >
+            {char === " " ? "\u00A0" : char}
+          </span>
+        );
+      })}
+    </span>
+  );
+};
+
+/**
+ * Wraps a revealed title in one of six entrance animations. `framesSinceStart`
  * is frame - clip.from, i.e. how long ago this clip's title became visible —
  * NOT the raw timeline frame, so the animation always plays out relative to
  * the moment of reveal regardless of where in the video that happens.
@@ -31,6 +131,27 @@ const AnimatedTitle: React.FC<{
   fps: number;
   animationStyle: Clip["animationStyle"];
 }> = ({ text, textStyle, framesSinceStart, fps, animationStyle }) => {
+  if (animationStyle === "typewriter") {
+    return (
+      <TypewriterTitle
+        text={text}
+        textStyle={textStyle}
+        framesSinceStart={framesSinceStart}
+      />
+    );
+  }
+
+  if (animationStyle === "bounceLetters") {
+    return (
+      <BounceLettersTitle
+        text={text}
+        textStyle={textStyle}
+        framesSinceStart={framesSinceStart}
+        fps={fps}
+      />
+    );
+  }
+
   let motionStyle: React.CSSProperties = {};
 
   if (animationStyle === "fade") {
@@ -50,6 +171,26 @@ const AnimatedTitle: React.FC<{
     );
     const translateY = interpolate(progress, [0, 1], [24, 0]);
     motionStyle = { opacity: progress, transform: `translateY(${translateY}px)` };
+  } else if (animationStyle === "glow") {
+    // Fades in like "fade", but also flares a soft glow around the text
+    // that's brightest partway through the reveal and settles to a faint
+    // steady glow rather than vanishing completely.
+    const progress = interpolate(
+      framesSinceStart,
+      [0, REVEAL_DURATION],
+      [0, 1],
+      { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+    );
+    const glowIntensity = interpolate(
+      framesSinceStart,
+      [0, REVEAL_DURATION / 2, REVEAL_DURATION],
+      [0, 1, 0.3],
+      { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+    );
+    motionStyle = {
+      opacity: progress,
+      textShadow: `0 0 ${8 + glowIntensity * 20}px rgba(255,213,74,${glowIntensity}), 0 2px 6px rgba(0,0,0,0.7)`,
+    };
   } else {
     // "pop" — a springy overshoot on scale, settling just past 1 before
     // relaxing back, plus a quick fade so it doesn't flash in at full scale.
