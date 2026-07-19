@@ -20,6 +20,11 @@ export const ClipSchema = z.object({
   badgeType: z.enum(["number", "emoji"]),
   // Only used when badgeType is "emoji"; ignored otherwise.
   badgeEmoji: z.string(),
+  // Controls the entrance animation played when this clip's title first
+  // reveals (i.e. the moment its clip starts playing). Does not affect the
+  // dim transition when the clip finishes — that stays an instant color
+  // change, this is purely the "appear" moment.
+  animationStyle: z.enum(["fade", "slideUp", "pop"]),
 });
 
 export const CompositionProps = z.object({

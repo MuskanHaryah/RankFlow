@@ -42,6 +42,7 @@ const Home: NextPage = () => {
           rank: clip.rank,
           badgeType: clip.badgeType,
           badgeEmoji: clip.badgeEmoji,
+          animationStyle: clip.animationStyle,
         })),
     };
   }, [uploadedClips]);

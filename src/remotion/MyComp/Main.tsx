@@ -1,10 +1,74 @@
 import { Video } from "@remotion/media";
-import { AbsoluteFill, Sequence, useCurrentFrame } from "remotion";
+import {
+  AbsoluteFill,
+  interpolate,
+  Sequence,
+  spring,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import { z } from "zod";
 import { CompositionProps } from "../../../types/constants";
 
 type Clip = z.infer<typeof CompositionProps>["clips"][number];
 type ClipRange = Clip & { from: number; to: number };
+
+// How long the entrance animation takes to finish, in frames, once a
+// clip's title first reveals. Purely the "appear" moment — has no effect
+// on the later bright -> dim transition when the clip finishes.
+const REVEAL_DURATION = 20;
+
+/**
+ * Wraps a revealed title in one of three entrance animations. `framesSinceStart`
+ * is frame - clip.from, i.e. how long ago this clip's title became visible —
+ * NOT the raw timeline frame, so the animation always plays out relative to
+ * the moment of reveal regardless of where in the video that happens.
+ */
+const AnimatedTitle: React.FC<{
+  text: string;
+  textStyle: React.CSSProperties;
+  framesSinceStart: number;
+  fps: number;
+  animationStyle: Clip["animationStyle"];
+}> = ({ text, textStyle, framesSinceStart, fps, animationStyle }) => {
+  let motionStyle: React.CSSProperties = {};
+
+  if (animationStyle === "fade") {
+    const opacity = interpolate(
+      framesSinceStart,
+      [0, REVEAL_DURATION],
+      [0, 1],
+      { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+    );
+    motionStyle = { opacity };
+  } else if (animationStyle === "slideUp") {
+    const progress = interpolate(
+      framesSinceStart,
+      [0, REVEAL_DURATION],
+      [0, 1],
+      { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+    );
+    const translateY = interpolate(progress, [0, 1], [24, 0]);
+    motionStyle = { opacity: progress, transform: `translateY(${translateY}px)` };
+  } else {
+    // "pop" — a springy overshoot on scale, settling just past 1 before
+    // relaxing back, plus a quick fade so it doesn't flash in at full scale.
+    const scale = spring({
+      frame: framesSinceStart,
+      fps,
+      config: { damping: 10, stiffness: 200, mass: 0.5 },
+    });
+    const opacity = interpolate(
+      framesSinceStart,
+      [0, REVEAL_DURATION / 2],
+      [0, 1],
+      { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+    );
+    motionStyle = { opacity, transform: `scale(${scale})` };
+  }
+
+  return <span style={{ ...textStyle, ...motionStyle }}>{text}</span>;
+};
 
 /**
  * Computed once, shared by both the video Sequence stack below and the
@@ -35,6 +99,7 @@ const RankingList: React.FC<{ clipRanges: ClipRange[] }> = ({
   clipRanges,
 }) => {
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const sortedByRank = clipRanges.slice().sort((a, b) => a.rank - b.rank);
 
   return (
@@ -63,8 +128,12 @@ const RankingList: React.FC<{ clipRanges: ClipRange[] }> = ({
                   : `${clip.rank}.`}
               </span>
               {hasStarted && clip.title ? (
-                <span
-                  style={{
+                <AnimatedTitle
+                  text={clip.title}
+                  framesSinceStart={frame - clip.from}
+                  fps={fps}
+                  animationStyle={clip.animationStyle}
+                  textStyle={{
                     fontSize: 42,
                     fontWeight: 700,
                     color: isCurrent
@@ -72,9 +141,7 @@ const RankingList: React.FC<{ clipRanges: ClipRange[] }> = ({
                       : "rgba(255,255,255,0.35)",
                     textShadow: "0 2px 6px rgba(0,0,0,0.7)",
                   }}
-                >
-                  {clip.title}
-                </span>
+                />
               ) : null}
             </div>
           );

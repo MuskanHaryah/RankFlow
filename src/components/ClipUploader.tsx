@@ -29,6 +29,7 @@ export type UploadedClip = {
   rank: number; // which badge slot (1..N) this clip is assigned to
   badgeType: "number" | "emoji";
   badgeEmoji: string; // only used when badgeType is "emoji"
+  animationStyle: "fade" | "slideUp" | "pop"; // entrance animation for this clip's title reveal
 };
 
 export type PlayingOrderMode = "manual" | "ascending" | "descending" | "shuffle";
@@ -148,6 +149,10 @@ const SortableClipRow: React.FC<{
   onRankChange: (id: string, rank: number) => void;
   onBadgeTypeChange: (id: string, badgeType: "number" | "emoji") => void;
   onBadgeEmojiChange: (id: string, emoji: string) => void;
+  onAnimationStyleChange: (
+    id: string,
+    animationStyle: "fade" | "slideUp" | "pop",
+  ) => void;
 }> = ({
   clip,
   clipCount,
@@ -156,6 +161,7 @@ const SortableClipRow: React.FC<{
   onRankChange,
   onBadgeTypeChange,
   onBadgeEmojiChange,
+  onAnimationStyleChange,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: clip.id, disabled: !dragEnabled });
@@ -243,13 +249,30 @@ const SortableClipRow: React.FC<{
           />
         ) : null}
       </div>
-      <input
-        type="text"
-        value={clip.title}
-        onChange={(e) => onTitleChange(clip.id, e.target.value)}
-        placeholder="Title for this clip (optional)"
-        className="ml-6 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-      />
+      <div className="ml-6 flex items-center gap-2 flex-wrap">
+        <input
+          type="text"
+          value={clip.title}
+          onChange={(e) => onTitleChange(clip.id, e.target.value)}
+          placeholder="Title for this clip (optional)"
+          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+        />
+        <label className="text-subtitle text-xs">Reveal animation</label>
+        <select
+          value={clip.animationStyle}
+          onChange={(e) =>
+            onAnimationStyleChange(
+              clip.id,
+              e.target.value as "fade" | "slideUp" | "pop",
+            )
+          }
+          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+        >
+          <option value="fade">Fade in</option>
+          <option value="slideUp">Slide up</option>
+          <option value="pop">Pop</option>
+        </select>
+      </div>
     </li>
   );
 };
@@ -305,6 +328,7 @@ export const ClipUploader: React.FC<{
         rank: index + 1,
         badgeType: "number",
         badgeEmoji: "",
+        animationStyle: "fade",
       }));
 
       setClips(newClips);
@@ -461,6 +485,17 @@ export const ClipUploader: React.FC<{
     [],
   );
 
+  const handleAnimationStyleChange = useCallback(
+    (id: string, animationStyle: "fade" | "slideUp" | "pop") => {
+      setClips((prevClips) =>
+        prevClips.map((clip) =>
+          clip.id === id ? { ...clip, animationStyle } : clip,
+        ),
+      );
+    },
+    [],
+  );
+
   // Switching mode applies its effect immediately — ascending/descending
   // recompute order from rank right away, shuffle randomizes once on
   // selection, manual leaves whatever order is already set untouched.
@@ -542,6 +577,7 @@ export const ClipUploader: React.FC<{
                     onRankChange={handleRankChange}
                     onBadgeTypeChange={handleBadgeTypeChange}
                     onBadgeEmojiChange={handleBadgeEmojiChange}
+                    onAnimationStyleChange={handleAnimationStyleChange}
                   />
                 ))}
               </ul>
