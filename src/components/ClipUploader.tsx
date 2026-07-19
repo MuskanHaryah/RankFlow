@@ -22,10 +22,16 @@ export type UploadedClip = {
   id: string;
   file: File;
   src: string; // starts as a blob: URL for instant preview, later replaced by the real uploaded server path
-  order: number;
+  order: number; // playback sequence position
   durationInFrames: number | null; // null = still being read
   uploadStatus: "uploading" | "done" | "error";
+  title: string; // empty string = no title text shown once revealed
+  rank: number; // which badge slot (1..N) this clip is assigned to
+  badgeType: "number" | "emoji";
+  badgeEmoji: string; // only used when badgeType is "emoji"
 };
+
+export type PlayingOrderMode = "manual" | "ascending" | "descending" | "shuffle";
 
 const MAX_CLIPS = 10;
 
@@ -103,13 +109,56 @@ const uploadClipToServer = async (file: File): Promise<string> => {
 };
 
 /**
+ * Ascending: rank 1 plays first, rank 2 second, and so on.
+ * Descending: the highest rank plays first, rank 1 plays last — the
+ * classic countdown format, saving the top spot for last.
+ * Pure and deterministic — no randomness here, that's shuffleOrder below.
+ */
+const deriveOrderFromRank = (
+  clipsList: UploadedClip[],
+  mode: "ascending" | "descending",
+): UploadedClip[] => {
+  const total = clipsList.length;
+  return clipsList.map((clip) => ({
+    ...clip,
+    order: mode === "ascending" ? clip.rank : total + 1 - clip.rank,
+  }));
+};
+
+/** Fisher-Yates shuffle, applied to play order only — ranks are untouched. */
+const shuffleOrder = (clipsList: UploadedClip[]): UploadedClip[] => {
+  const shuffled = [...clipsList];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.map((clip, index) => ({ ...clip, order: index + 1 }));
+};
+
+/**
  * A single draggable row in the clip list. Split out from the main
  * component because useSortable() must be called once per draggable item,
  * not once for the whole list.
  */
-const SortableClipRow: React.FC<{ clip: UploadedClip }> = ({ clip }) => {
+const SortableClipRow: React.FC<{
+  clip: UploadedClip;
+  clipCount: number;
+  dragEnabled: boolean;
+  onTitleChange: (id: string, title: string) => void;
+  onRankChange: (id: string, rank: number) => void;
+  onBadgeTypeChange: (id: string, badgeType: "number" | "emoji") => void;
+  onBadgeEmojiChange: (id: string, emoji: string) => void;
+}> = ({
+  clip,
+  clipCount,
+  dragEnabled,
+  onTitleChange,
+  onRankChange,
+  onBadgeTypeChange,
+  onBadgeEmojiChange,
+}) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: clip.id });
+    useSortable({ id: clip.id, disabled: !dragEnabled });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -121,36 +170,86 @@ const SortableClipRow: React.FC<{ clip: UploadedClip }> = ({ clip }) => {
     <li
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 text-sm bg-background"
+      className="flex flex-col gap-1 text-sm bg-background py-1"
     >
-      <span
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing select-none px-1 text-subtitle"
-        title="Drag to reorder"
-      >
-        ⠿
-      </span>
-      <span>
-        #{clip.order} — {clip.file.name} (
-        {(clip.file.size / 1024 / 1024).toFixed(1)} MB) —{" "}
-        {clip.durationInFrames === null ? (
-          <span className="text-subtitle">reading duration…</span>
-        ) : (
-          <span>
-            {(clip.durationInFrames / FPS).toFixed(1)}s (
-            {clip.durationInFrames} frames)
-          </span>
-        )}
-        {" — "}
-        {clip.uploadStatus === "uploading" ? (
-          <span className="text-subtitle">uploading…</span>
-        ) : clip.uploadStatus === "done" ? (
-          <span className="text-green-500">uploaded</span>
-        ) : (
-          <span className="text-red-500">upload failed</span>
-        )}
-      </span>
+      <div className="flex items-center gap-2">
+        <span
+          {...attributes}
+          {...(dragEnabled ? listeners : {})}
+          className={`select-none px-1 ${
+            dragEnabled
+              ? "cursor-grab active:cursor-grabbing text-subtitle"
+              : "cursor-not-allowed text-unfocused-border-color"
+          }`}
+          title={
+            dragEnabled
+              ? "Drag to reorder"
+              : "Switch Playing Order to Manual to drag"
+          }
+        >
+          ⠿
+        </span>
+        <span>
+          Plays #{clip.order} — {clip.file.name} (
+          {(clip.file.size / 1024 / 1024).toFixed(1)} MB) —{" "}
+          {clip.durationInFrames === null ? (
+            <span className="text-subtitle">reading duration…</span>
+          ) : (
+            <span>
+              {(clip.durationInFrames / FPS).toFixed(1)}s (
+              {clip.durationInFrames} frames)
+            </span>
+          )}
+          {" — "}
+          {clip.uploadStatus === "uploading" ? (
+            <span className="text-subtitle">uploading…</span>
+          ) : clip.uploadStatus === "done" ? (
+            <span className="text-green-500">uploaded</span>
+          ) : (
+            <span className="text-red-500">upload failed</span>
+          )}
+        </span>
+      </div>
+      <div className="ml-6 flex items-center gap-2 flex-wrap">
+        <label className="text-subtitle text-xs">Rank</label>
+        <input
+          type="number"
+          min={1}
+          max={clipCount}
+          value={clip.rank}
+          onChange={(e) => onRankChange(clip.id, Number(e.target.value))}
+          className="w-14 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+        />
+        <select
+          value={clip.badgeType}
+          onChange={(e) =>
+            onBadgeTypeChange(
+              clip.id,
+              e.target.value as "number" | "emoji",
+            )
+          }
+          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+        >
+          <option value="number">Number badge</option>
+          <option value="emoji">Emoji badge</option>
+        </select>
+        {clip.badgeType === "emoji" ? (
+          <input
+            type="text"
+            value={clip.badgeEmoji}
+            onChange={(e) => onBadgeEmojiChange(clip.id, e.target.value)}
+            placeholder="🔥"
+            className="w-16 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+          />
+        ) : null}
+      </div>
+      <input
+        type="text"
+        value={clip.title}
+        onChange={(e) => onTitleChange(clip.id, e.target.value)}
+        placeholder="Title for this clip (optional)"
+        className="ml-6 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+      />
     </li>
   );
 };
@@ -160,6 +259,10 @@ export const ClipUploader: React.FC<{
 }> = ({ onClipsChange }) => {
   const [clips, setClips] = useState<UploadedClip[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
+  // Manual = drag-and-drop decides play order directly. Ascending/descending
+  // derive play order from rank automatically. Shuffle randomizes it.
+  const [playingOrderMode, setPlayingOrderMode] =
+    useState<PlayingOrderMode>("manual");
 
   // A small activation distance prevents drags from firing on a plain
   // click — without this, clicking anywhere on a row could accidentally
@@ -198,6 +301,10 @@ export const ClipUploader: React.FC<{
         order: index + 1,
         durationInFrames: null,
         uploadStatus: "uploading",
+        title: "",
+        rank: index + 1,
+        badgeType: "number",
+        badgeEmoji: "",
       }));
 
       setClips(newClips);
@@ -259,34 +366,119 @@ export const ClipUploader: React.FC<{
       });
     }, []);
 
-  // Dragging changes the array's order — but the Remotion composition
-  // reads the `order` field, not array position, so we reassign it here
-  // to match. This is the step that actually makes the reorder "real"
-  // rather than just visual.
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) {
-      return;
-    }
+  // Dragging only actually changes anything in manual mode — in the other
+  // three modes, play order is derived automatically (ascending/descending)
+  // or set by the shuffle button, so a stray drag shouldn't silently
+  // override that.
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (playingOrderMode !== "manual") {
+        return;
+      }
 
+      const { active, over } = event;
+      if (!over || active.id === over.id) {
+        return;
+      }
+
+      setClips((prevClips) => {
+        const oldIndex = prevClips.findIndex((c) => c.id === active.id);
+        const newIndex = prevClips.findIndex((c) => c.id === over.id);
+        const reordered = arrayMove(prevClips, oldIndex, newIndex);
+        return reordered.map((clip, index) => ({
+          ...clip,
+          order: index + 1,
+        }));
+      });
+    },
+    [playingOrderMode],
+  );
+
+  const handleTitleChange = useCallback((id: string, title: string) => {
+    setClips((prevClips) =>
+      prevClips.map((clip) => (clip.id === id ? { ...clip, title } : clip)),
+    );
+  }, []);
+
+  // Ranks must stay a valid 1..N permutation with no duplicates — so
+  // setting a rank that's already taken by another clip swaps the two
+  // clips' ranks rather than creating a conflict. If we're currently in
+  // ascending/descending mode, play order is re-derived immediately too,
+  // since it depends on rank in those modes.
+  const handleRankChange = useCallback(
+    (id: string, newRank: number) => {
+      setClips((prevClips) => {
+        const clampedRank = Math.max(
+          1,
+          Math.min(prevClips.length, newRank || 1),
+        );
+        const targetClip = prevClips.find((c) => c.id === id);
+        if (!targetClip) {
+          return prevClips;
+        }
+        const conflicting = prevClips.find(
+          (c) => c.rank === clampedRank && c.id !== id,
+        );
+        let updated = prevClips.map((c) => {
+          if (c.id === id) {
+            return { ...c, rank: clampedRank };
+          }
+          if (conflicting && c.id === conflicting.id) {
+            return { ...c, rank: targetClip.rank };
+          }
+          return c;
+        });
+
+        if (playingOrderMode === "ascending" || playingOrderMode === "descending") {
+          updated = deriveOrderFromRank(updated, playingOrderMode);
+        }
+
+        return updated;
+      });
+    },
+    [playingOrderMode],
+  );
+
+  const handleBadgeTypeChange = useCallback(
+    (id: string, badgeType: "number" | "emoji") => {
+      setClips((prevClips) =>
+        prevClips.map((clip) =>
+          clip.id === id ? { ...clip, badgeType } : clip,
+        ),
+      );
+    },
+    [],
+  );
+
+  const handleBadgeEmojiChange = useCallback(
+    (id: string, badgeEmoji: string) => {
+      setClips((prevClips) =>
+        prevClips.map((clip) =>
+          clip.id === id ? { ...clip, badgeEmoji } : clip,
+        ),
+      );
+    },
+    [],
+  );
+
+  // Switching mode applies its effect immediately — ascending/descending
+  // recompute order from rank right away, shuffle randomizes once on
+  // selection, manual leaves whatever order is already set untouched.
+  const handleModeChange = useCallback((mode: PlayingOrderMode) => {
+    setPlayingOrderMode(mode);
     setClips((prevClips) => {
-      const oldIndex = prevClips.findIndex((c) => c.id === active.id);
-      const newIndex = prevClips.findIndex((c) => c.id === over.id);
-      const reordered = arrayMove(prevClips, oldIndex, newIndex);
-      return reordered.map((clip, index) => ({ ...clip, order: index + 1 }));
+      if (mode === "ascending" || mode === "descending") {
+        return deriveOrderFromRank(prevClips, mode);
+      }
+      if (mode === "shuffle") {
+        return shuffleOrder(prevClips);
+      }
+      return prevClips;
     });
   }, []);
 
-  const handleShuffle = useCallback(() => {
-    setClips((prevClips) => {
-      const shuffled = [...prevClips];
-      // Fisher-Yates shuffle
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      return shuffled.map((clip, index) => ({ ...clip, order: index + 1 }));
-    });
+  const handleShuffleAgain = useCallback(() => {
+    setClips((prevClips) => shuffleOrder(prevClips));
   }, []);
 
   return (
@@ -305,14 +497,31 @@ export const ClipUploader: React.FC<{
       {warning ? <p className="text-sm text-red-500">{warning}</p> : null}
       {clips.length > 0 ? (
         <>
-          <div className="flex items-center justify-between mt-2">
-            <span className="text-sm text-subtitle">
-              Drag ⠿ to reorder, or:
-            </span>
-            <Button disabled={clips.length < 2} onClick={handleShuffle}>
-              Shuffle
-            </Button>
+          <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-subtitle">Playing order</label>
+              <select
+                value={playingOrderMode}
+                onChange={(e) =>
+                  handleModeChange(e.target.value as PlayingOrderMode)
+                }
+                className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+              >
+                <option value="manual">Manual (drag ⠿ below)</option>
+                <option value="ascending">Ascending rank (1 → N)</option>
+                <option value="descending">Descending rank (N → 1)</option>
+                <option value="shuffle">Shuffle</option>
+              </select>
+            </div>
+            {playingOrderMode === "shuffle" ? (
+              <Button onClick={handleShuffleAgain}>Shuffle again</Button>
+            ) : null}
           </div>
+          <p className="text-sm text-subtitle">
+            {playingOrderMode === "manual"
+              ? "Drag ⠿ below to set exactly which clip plays when."
+              : "Drag is disabled while an automatic playing order mode is selected — switch to Manual to drag."}
+          </p>
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -322,9 +531,18 @@ export const ClipUploader: React.FC<{
               items={clips.map((clip) => clip.id)}
               strategy={verticalListSortingStrategy}
             >
-              <ul className="flex flex-col gap-1">
+              <ul className="flex flex-col gap-2">
                 {clips.map((clip) => (
-                  <SortableClipRow key={clip.id} clip={clip} />
+                  <SortableClipRow
+                    key={clip.id}
+                    clip={clip}
+                    clipCount={clips.length}
+                    dragEnabled={playingOrderMode === "manual"}
+                    onTitleChange={handleTitleChange}
+                    onRankChange={handleRankChange}
+                    onBadgeTypeChange={handleBadgeTypeChange}
+                    onBadgeEmojiChange={handleBadgeEmojiChange}
+                  />
                 ))}
               </ul>
             </SortableContext>

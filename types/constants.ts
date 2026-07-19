@@ -8,8 +8,18 @@ export const ClipSchema = z.object({
   // in-browser preview (this step), or a real uploaded file path once we
   // wire up export in the next step.
   src: z.string(),
-  order: z.number(),
+  order: z.number(), // playback sequence position (Phase 3)
   durationInFrames: z.number(),
+  // Stays empty ("") if the person doesn't type one — the ranking list
+  // overlay simply shows no title text for that slot until it's set.
+  title: z.string(),
+  // Which numbered badge slot (1..N) this clip is assigned to. Deliberately
+  // independent from `order` — you can set which clip plays first while
+  // separately controlling which rank number it's revealed as.
+  rank: z.number(),
+  badgeType: z.enum(["number", "emoji"]),
+  // Only used when badgeType is "emoji"; ignored otherwise.
+  badgeEmoji: z.string(),
 });
 
 export const CompositionProps = z.object({

@@ -38,6 +38,10 @@ const Home: NextPage = () => {
           src: clip.src,
           order: clip.order,
           durationInFrames: clip.durationInFrames,
+          title: clip.title,
+          rank: clip.rank,
+          badgeType: clip.badgeType,
+          badgeEmoji: clip.badgeEmoji,
         })),
     };
   }, [uploadedClips]);
