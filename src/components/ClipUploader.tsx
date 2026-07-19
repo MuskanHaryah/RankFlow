@@ -551,4 +551,4 @@ export const ClipUploader: React.FC<{
       ) : null}
     </div>
   );
-};
+}
