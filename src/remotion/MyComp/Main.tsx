@@ -38,7 +38,7 @@ const RankingList: React.FC<{ clipRanges: ClipRange[] }> = ({
   const sortedByRank = clipRanges.slice().sort((a, b) => a.rank - b.rank);
 
   return (
-    <AbsoluteFill style={{ padding: 60, justifyContent: "flex-start" }}>
+    <AbsoluteFill style={{ padding: 60, justifyContent: "center" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         {sortedByRank.map((clip) => {
           const hasStarted = frame >= clip.from;
