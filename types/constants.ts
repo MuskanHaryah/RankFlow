@@ -34,13 +34,55 @@ export const ClipSchema = z.object({
   ]),
 });
 
+// A one-time title for the whole video (distinct from the per-clip ranking
+// list in Phase 4). Stored as an array of {word, color} objects rather than
+// a single string — this is the design decision that makes per-word
+// coloring simple. Retrofitting this onto a plain string later would be a
+// much bigger rewrite, so the array shape is used from the start even
+// though phase 7 only needs to render it, not fully lay it out yet — Phase
+// 8 will place it inside a scrim without needing to touch this schema.
+export const HeaderWordSchema = z.object({
+  word: z.string(),
+  color: z.string(), // any valid CSS color, e.g. "#ffffff"
+  // Forces a manual line break immediately after this word, regardless of
+  // whether the browser's natural wrapping would have broken there. Lets
+  // you deliberately control a 2-line layout (e.g. "Ranking Most Insane" /
+  // "Colorful Curly Hair") instead of leaving it entirely up to wherever
+  // the text happens to wrap at the current font size.
+  lineBreakAfter: z.boolean(),
+});
+
+// "persistent" = visible for the entire video. "firstTwoSeconds" = only
+// during the intro, then it disappears for the rest of the video.
+export const HeaderDurationModeSchema = z.enum([
+  "persistent",
+  "firstTwoSeconds",
+]);
+
+export const HeaderSchema = z.object({
+  words: z.array(HeaderWordSchema),
+  durationMode: HeaderDurationModeSchema,
+  // Applies to the whole header (it's one continuous title, not per-word
+  // sized) — this is also what Phase 8's backdrop-height measurement will
+  // read, so a resized header automatically resizes its own backdrop too.
+  fontSize: z.number(),
+});
+
 export const CompositionProps = z.object({
   clips: z.array(ClipSchema),
+  header: HeaderSchema,
 });
 
 export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
   clips: [],
+  header: { words: [], durationMode: "persistent", fontSize: 56 },
 };
+
+// How many seconds the header stays on screen when durationMode is
+// "firstTwoSeconds". Kept as a named constant (rather than a magic 2
+// scattered around) since Phase 8 will likely need this same number to
+// size/time the scrim underneath it.
+export const HEADER_INTRO_SECONDS = 2;
 
 // Changed from 1280x720 to vertical, matching the actual target format.
 export const VIDEO_WIDTH = 1080;

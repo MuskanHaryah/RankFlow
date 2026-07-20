@@ -8,10 +8,11 @@ import {
   useVideoConfig,
 } from "remotion";
 import { z } from "zod";
-import { CompositionProps } from "../../../types/constants";
+import { CompositionProps, HEADER_INTRO_SECONDS } from "../../../types/constants";
 
 type Clip = z.infer<typeof CompositionProps>["clips"][number];
 type ClipRange = Clip & { from: number; to: number };
+type HeaderProps = z.infer<typeof CompositionProps>["header"];
 
 // How long the entrance animation takes to finish, in frames, once a
 // clip's title first reveals. Purely the "appear" moment — has no effect
@@ -292,7 +293,81 @@ const RankingList: React.FC<{ clipRanges: ClipRange[] }> = ({
   );
 };
 
-export const Main = ({ clips }: z.infer<typeof CompositionProps>) => {
+/**
+ * A one-time title for the whole video — a sibling of the ranking list, not
+ * nested inside it and not per-clip. Each word renders as its own <span>
+ * with its own color, joined by plain spaces. Words are grouped into lines
+ * wherever `lineBreakAfter` is set, so line breaks are deliberate rather
+ * than left entirely to the browser's natural wrapping — the browser will
+ * still additionally soft-wrap within a line if it's too long for the
+ * canvas width. In "firstTwoSeconds" mode it simply stops rendering past
+ * the cutoff; Phase 8 can layer a fade onto this same cutoff later if that
+ * feels too abrupt once the scrim exists.
+ */
+const Header: React.FC<{ header: HeaderProps }> = ({ header }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  if (header.words.length === 0) {
+    return null;
+  }
+
+  if (
+    header.durationMode === "firstTwoSeconds" &&
+    frame >= HEADER_INTRO_SECONDS * fps
+  ) {
+    return null;
+  }
+
+  // Split the flat word list into lines wherever a word is flagged
+  // lineBreakAfter. Always at least one line, even with no manual breaks.
+  const lines: (typeof header.words)[] = [];
+  let currentLine: typeof header.words = [];
+  for (const headerWord of header.words) {
+    currentLine.push(headerWord);
+    if (headerWord.lineBreakAfter) {
+      lines.push(currentLine);
+      currentLine = [];
+    }
+  }
+  if (currentLine.length > 0) {
+    lines.push(currentLine);
+  }
+
+  return (
+    <AbsoluteFill
+      style={{ alignItems: "center", padding: "70px 60px 0", pointerEvents: "none" }}
+    >
+      <div
+        style={{
+          fontSize: header.fontSize,
+          fontWeight: 900,
+          textAlign: "center",
+          lineHeight: 1.2,
+        }}
+      >
+        {lines.map((lineWords, lineIndex) => (
+          <div key={lineIndex}>
+            {lineWords.map((headerWord, i) => (
+              <span
+                key={i}
+                style={{
+                  color: headerWord.color,
+                  textShadow: "0 2px 8px rgba(0,0,0,0.75)",
+                }}
+              >
+                {headerWord.word}
+                {i < lineWords.length - 1 ? " " : ""}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+export const Main = ({ clips, header }: z.infer<typeof CompositionProps>) => {
   const clipRanges = computeClipRanges(clips);
 
   return (
@@ -307,6 +382,7 @@ export const Main = ({ clips }: z.infer<typeof CompositionProps>) => {
         </Sequence>
       ))}
       <RankingList clipRanges={clipRanges} />
+      <Header header={header} />
     </AbsoluteFill>
   );
 };

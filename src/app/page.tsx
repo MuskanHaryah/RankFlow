@@ -6,11 +6,14 @@ import { useMemo, useState } from "react";
 import { z } from "zod";
 import {
   CompositionProps,
+  defaultMyCompProps,
+  HeaderSchema,
   VIDEO_FPS,
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
 } from "../../types/constants";
 import { ClipUploader, UploadedClip } from "../components/ClipUploader";
+import { HeaderEditor } from "../components/HeaderEditor";
 import { RenderControls } from "../components/RenderControls";
 import { Spacing } from "../components/Spacing";
 import { Tips } from "../components/Tips";
@@ -18,6 +21,11 @@ import { Main } from "../remotion/MyComp/Main";
 
 const Home: NextPage = () => {
   const [uploadedClips, setUploadedClips] = useState<UploadedClip[]>([]);
+  // Lifted the same way as uploadedClips: HeaderEditor owns the actual
+  // editing state and just reports the current value up on every change.
+  const [header, setHeader] = useState<z.infer<typeof HeaderSchema>>(
+    defaultMyCompProps.header,
+  );
 
   // Only include clips with a real, usable duration — clips still showing
   // "reading duration…" (null) or that failed validation are deliberately
@@ -44,8 +52,9 @@ const Home: NextPage = () => {
           badgeEmoji: clip.badgeEmoji,
           animationStyle: clip.animationStyle,
         })),
+      header,
     };
-  }, [uploadedClips]);
+  }, [uploadedClips, header]);
 
   const totalDurationInFrames = useMemo(() => {
     const total = inputProps.clips.reduce(
@@ -75,6 +84,8 @@ const Home: NextPage = () => {
             initiallyMuted
           />
         </div>
+        <HeaderEditor onHeaderChange={setHeader} />
+        <Spacing></Spacing>
         <ClipUploader onClipsChange={setUploadedClips} />
         <Spacing></Spacing>
         <RenderControls inputProps={inputProps}></RenderControls>
