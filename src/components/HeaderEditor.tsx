@@ -13,6 +13,18 @@ const DEFAULT_FONT_SIZE = 56;
 const MIN_FONT_SIZE = 24;
 const MAX_FONT_SIZE = 96;
 
+// Phase 8, part 1 — shade backdrop defaults/ranges. Opacity default matches
+// the near-opaque flat black bar look of the reference design. Extra height
+// is a manual "push the bar further down" override on top of the
+// auto-measured height, for a lengthy header or just stylistic preference.
+const DEFAULT_SHADE_OPACITY = 0.85;
+const MIN_SHADE_OPACITY = 0;
+const MAX_SHADE_OPACITY = 1;
+const SHADE_OPACITY_STEP = 0.01;
+const DEFAULT_SHADE_EXTRA_HEIGHT = 0;
+const MIN_SHADE_EXTRA_HEIGHT = 0;
+const MAX_SHADE_EXTRA_HEIGHT = 400;
+
 /**
  * A one-time title for the whole video (distinct from the per-clip ranking
  * list). Typing a sentence splits it into individually-colored words —
@@ -36,14 +48,35 @@ export const HeaderEditor: React.FC<{
   const [durationMode, setDurationMode] =
     useState<HeaderDurationMode>("persistent");
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
+  // Phase 8, part 1 — only "shade" is wired up right now (see
+  // headerBackdrop.ts / Main.tsx); the mode is fixed rather than exposed as
+  // a selector until "extendCanvas" is built in part 2.
+  const [shadeOpacity, setShadeOpacity] = useState(DEFAULT_SHADE_OPACITY);
+  const [shadeExtraHeight, setShadeExtraHeight] = useState(
+    DEFAULT_SHADE_EXTRA_HEIGHT,
+  );
 
   // Same pattern as ClipUploader's onClipsChange: notify the parent via an
   // effect keyed on the actual state, not inline on every keystroke handler.
   // Safe as long as the parent passes a stable callback (e.g. a useState
   // setter directly) rather than a new inline function every render.
   useEffect(() => {
-    onHeaderChange?.({ words, durationMode, fontSize });
-  }, [words, durationMode, fontSize, onHeaderChange]);
+    onHeaderChange?.({
+      words,
+      durationMode,
+      fontSize,
+      headerBackdropMode: "shade",
+      headerBackdropShadeOpacity: shadeOpacity,
+      headerBackdropShadeExtraHeight: shadeExtraHeight,
+    });
+  }, [
+    words,
+    durationMode,
+    fontSize,
+    shadeOpacity,
+    shadeExtraHeight,
+    onHeaderChange,
+  ]);
 
   const handleTextChange = useCallback((value: string) => {
     setHeaderText(value);
@@ -137,6 +170,39 @@ export const HeaderEditor: React.FC<{
               className="w-40"
             />
             <span className="text-sm text-subtitle w-10">{fontSize}px</span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <label className="text-sm text-subtitle">Shade darkness</label>
+            <input
+              type="range"
+              min={MIN_SHADE_OPACITY}
+              max={MAX_SHADE_OPACITY}
+              step={SHADE_OPACITY_STEP}
+              value={shadeOpacity}
+              onChange={(e) => setShadeOpacity(Number(e.target.value))}
+              className="w-40"
+            />
+            <span className="text-sm text-subtitle w-10">
+              {Math.round(shadeOpacity * 100)}%
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <label className="text-sm text-subtitle">
+              Extend shade downward
+            </label>
+            <input
+              type="range"
+              min={MIN_SHADE_EXTRA_HEIGHT}
+              max={MAX_SHADE_EXTRA_HEIGHT}
+              value={shadeExtraHeight}
+              onChange={(e) => setShadeExtraHeight(Number(e.target.value))}
+              className="w-40"
+            />
+            <span className="text-sm text-subtitle w-14">
+              {shadeExtraHeight}px
+            </span>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">

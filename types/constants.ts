@@ -59,13 +59,34 @@ export const HeaderDurationModeSchema = z.enum([
   "firstTwoSeconds",
 ]);
 
+// Phase 8 — which of the 2 backdrop treatments sits behind the header.
+// "shade" darkens the top of the actual footage (a flat black bar, the
+// original scrim design). "extendCanvas" grows the composition and puts
+// the header on a solid black bar above the untouched footage instead —
+// for source clips too short/cropped at the top for a shade to sit
+// legibly over. Built in two parts: shade first (this phase), then
+// extendCanvas — the enum already has both values so the schema doesn't
+// need to change again when extendCanvas lands, but only "shade" is
+// wired up to any rendering/UI for now.
+export const HeaderBackdropModeSchema = z.enum(["shade", "extendCanvas"]);
+
 export const HeaderSchema = z.object({
   words: z.array(HeaderWordSchema),
   durationMode: HeaderDurationModeSchema,
   // Applies to the whole header (it's one continuous title, not per-word
-  // sized) — this is also what Phase 8's backdrop-height measurement will
-  // read, so a resized header automatically resizes its own backdrop too.
+  // sized) — this is also what Phase 8's backdrop-height measurement
+  // reads, so a resized header automatically resizes its own backdrop too.
   fontSize: z.number(),
+  // Phase 8: which backdrop treatment is active.
+  headerBackdropMode: HeaderBackdropModeSchema,
+  // Phase 8, "shade" mode only: how dark the bar is (0 = fully
+  // transparent, 1 = fully opaque black).
+  headerBackdropShadeOpacity: z.number(),
+  // Phase 8, "shade" mode only: manual extra height (px) added on top of
+  // the auto-measured shade height, so a lengthy/multi-line header (or
+  // just a stylistic preference) can push the bar further down than the
+  // automatic measurement alone would. Defaults to 0 (pure auto height).
+  headerBackdropShadeExtraHeight: z.number(),
 });
 
 export const CompositionProps = z.object({
@@ -75,7 +96,16 @@ export const CompositionProps = z.object({
 
 export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
   clips: [],
-  header: { words: [], durationMode: "persistent", fontSize: 56 },
+  header: {
+    words: [],
+    durationMode: "persistent",
+    fontSize: 56,
+    headerBackdropMode: "shade",
+    // Matches the near-opaque flat black bar look of the reference
+    // screenshot rather than a light/gradient scrim.
+    headerBackdropShadeOpacity: 0.85,
+    headerBackdropShadeExtraHeight: 0,
+  },
 };
 
 // How many seconds the header stays on screen when durationMode is

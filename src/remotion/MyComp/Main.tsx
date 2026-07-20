@@ -9,6 +9,12 @@ import {
 } from "remotion";
 import { z } from "zod";
 import { CompositionProps, HEADER_INTRO_SECONDS } from "../../../types/constants";
+import {
+  HEADER_HORIZONTAL_PADDING,
+  HEADER_LINE_HEIGHT,
+  HEADER_TOP_PADDING,
+  getShadeBackdropHeight,
+} from "./headerBackdrop";
 
 type Clip = z.infer<typeof CompositionProps>["clips"][number];
 type ClipRange = Clip & { from: number; to: number };
@@ -294,6 +300,39 @@ const RankingList: React.FC<{ clipRanges: ClipRange[] }> = ({
 };
 
 /**
+ * Phase 8, part 1 — the "shade" backdrop: a flat, solid-black bar behind
+ * the header, sized to the header's actual measured height (plus the
+ * person's manual extend-downward amount) rather than a fixed guessed
+ * number. Renders nothing when there's no header text (height is 0), and
+ * re-derives its height from `header` on every render, so it can never go
+ * stale relative to the current text/font size/line-wrapping.
+ */
+const HeaderShadeBackdrop: React.FC<{
+  header: HeaderProps;
+  canvasWidth: number;
+}> = ({ header, canvasWidth }) => {
+  if (header.headerBackdropMode !== "shade") {
+    return null;
+  }
+
+  const height = getShadeBackdropHeight(header, canvasWidth);
+  if (height <= 0) {
+    return null;
+  }
+
+  return (
+    <AbsoluteFill
+      style={{
+        top: 0,
+        bottom: "auto",
+        height,
+        backgroundColor: `rgba(0, 0, 0, ${header.headerBackdropShadeOpacity})`,
+      }}
+    />
+  );
+};
+
+/**
  * A one-time title for the whole video — a sibling of the ranking list, not
  * nested inside it and not per-clip. Each word renders as its own <span>
  * with its own color, joined by plain spaces. Words are grouped into lines
@@ -336,14 +375,18 @@ const Header: React.FC<{ header: HeaderProps }> = ({ header }) => {
 
   return (
     <AbsoluteFill
-      style={{ alignItems: "center", padding: "70px 60px 0", pointerEvents: "none" }}
+      style={{
+        alignItems: "center",
+        padding: `${HEADER_TOP_PADDING}px ${HEADER_HORIZONTAL_PADDING}px 0`,
+        pointerEvents: "none",
+      }}
     >
       <div
         style={{
           fontSize: header.fontSize,
           fontWeight: 900,
           textAlign: "center",
-          lineHeight: 1.2,
+          lineHeight: HEADER_LINE_HEIGHT,
         }}
       >
         {lines.map((lineWords, lineIndex) => (
@@ -369,6 +412,7 @@ const Header: React.FC<{ header: HeaderProps }> = ({ header }) => {
 
 export const Main = ({ clips, header }: z.infer<typeof CompositionProps>) => {
   const clipRanges = computeClipRanges(clips);
+  const { width } = useVideoConfig();
 
   return (
     <AbsoluteFill className="bg-black">
@@ -381,6 +425,7 @@ export const Main = ({ clips, header }: z.infer<typeof CompositionProps>) => {
           <Video src={clip.src} />
         </Sequence>
       ))}
+      <HeaderShadeBackdrop header={header} canvasWidth={width} />
       <RankingList clipRanges={clipRanges} />
       <Header header={header} />
     </AbsoluteFill>
