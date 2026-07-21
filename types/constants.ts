@@ -64,10 +64,8 @@ export const HeaderDurationModeSchema = z.enum([
 // original scrim design). "extendCanvas" grows the composition and puts
 // the header on a solid black bar above the untouched footage instead —
 // for source clips too short/cropped at the top for a shade to sit
-// legibly over. Built in two parts: shade first (this phase), then
-// extendCanvas — the enum already has both values so the schema doesn't
-// need to change again when extendCanvas lands, but only "shade" is
-// wired up to any rendering/UI for now.
+// legibly over. Both modes are now wired up to rendering/UI (part 1:
+// shade, part 2: extendCanvas).
 export const HeaderBackdropModeSchema = z.enum(["shade", "extendCanvas"]);
 
 export const HeaderSchema = z.object({
@@ -87,6 +85,11 @@ export const HeaderSchema = z.object({
   // just a stylistic preference) can push the bar further down than the
   // automatic measurement alone would. Defaults to 0 (pure auto height).
   headerBackdropShadeExtraHeight: z.number(),
+  // Phase 8, "extendCanvas" mode only: manual extra height (px) added on
+  // top of the auto-measured black-bar height, same idea as the shade
+  // slider above but for the grown-canvas bar instead. Defaults to 0
+  // (pure auto height).
+  headerBackdropExtendCanvasExtraHeight: z.number(),
 });
 
 export const CompositionProps = z.object({
@@ -105,6 +108,7 @@ export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
     // screenshot rather than a light/gradient scrim.
     headerBackdropShadeOpacity: 0.85,
     headerBackdropShadeExtraHeight: 0,
+    headerBackdropExtendCanvasExtraHeight: 0,
   },
 };
 

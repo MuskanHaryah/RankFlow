@@ -13,6 +13,7 @@ import {
   HEADER_HORIZONTAL_PADDING,
   HEADER_LINE_HEIGHT,
   HEADER_TOP_PADDING,
+  getExtendCanvasExtraHeight,
   getShadeBackdropHeight,
 } from "./headerBackdrop";
 
@@ -414,19 +415,32 @@ export const Main = ({ clips, header }: z.infer<typeof CompositionProps>) => {
   const clipRanges = computeClipRanges(clips);
   const { width } = useVideoConfig();
 
+  // Phase 8, part 2: in "extendCanvas" mode the composition (see Root.tsx's
+  // calculateMetadata / page.tsx's Player) has already been made taller by
+  // exactly this many pixels. Pushing the video track and ranking list down
+  // by the same amount here — rather than resizing them — is what keeps the
+  // original footage "completely unresized/unpadded/uncropped, just shifted
+  // down". In "shade" mode (or no header text) this is 0 and both layers
+  // render exactly as they did before Phase 8.
+  const videoTrackOffset = getExtendCanvasExtraHeight(header, width);
+
   return (
     <AbsoluteFill className="bg-black">
-      {clipRanges.map((clip) => (
-        <Sequence
-          key={clip.id}
-          from={clip.from}
-          durationInFrames={clip.to - clip.from}
-        >
-          <Video src={clip.src} />
-        </Sequence>
-      ))}
+      <AbsoluteFill style={{ top: videoTrackOffset }}>
+        {clipRanges.map((clip) => (
+          <Sequence
+            key={clip.id}
+            from={clip.from}
+            durationInFrames={clip.to - clip.from}
+          >
+            <Video src={clip.src} />
+          </Sequence>
+        ))}
+      </AbsoluteFill>
       <HeaderShadeBackdrop header={header} canvasWidth={width} />
-      <RankingList clipRanges={clipRanges} />
+      <AbsoluteFill style={{ top: videoTrackOffset }}>
+        <RankingList clipRanges={clipRanges} />
+      </AbsoluteFill>
       <Header header={header} />
     </AbsoluteFill>
   );

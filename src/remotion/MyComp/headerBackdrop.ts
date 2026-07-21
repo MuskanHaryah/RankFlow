@@ -146,3 +146,57 @@ export const getShadeBackdropHeight = (
   }
   return Math.max(0, autoHeight + header.headerBackdropShadeExtraHeight);
 };
+
+/**
+ * Phase 8, part 2 — how much extra height the *composition itself* grows
+ * by in "extendCanvas" mode: the auto-measured height plus the person's
+ * manual extend amount, same shape as getShadeBackdropHeight. Returns 0
+ * whenever the mode isn't "extendCanvas" or there's no header text, so
+ * every caller (Root.tsx's calculateMetadata, the Player preview, and
+ * Main.tsx's own layout) can call this unconditionally and just trust the
+ * 0 to mean "nothing to add" rather than each re-deriving the mode check
+ * itself.
+ */
+export const getExtendCanvasExtraHeight = (
+  header: Pick<
+    HeaderProps,
+    | "words"
+    | "fontSize"
+    | "headerBackdropMode"
+    | "headerBackdropExtendCanvasExtraHeight"
+  >,
+  canvasWidth: number = VIDEO_WIDTH,
+): number => {
+  if (header.headerBackdropMode !== "extendCanvas") {
+    return 0;
+  }
+  const autoHeight = estimateHeaderBackdropHeight(header, canvasWidth);
+  if (autoHeight === 0) {
+    return 0;
+  }
+  return Math.max(
+    0,
+    autoHeight + header.headerBackdropExtendCanvasExtraHeight,
+  );
+};
+
+/**
+ * The full composition height to actually render/preview at: the base
+ * (unextended) video height plus whatever extendCanvas adds on top (0 in
+ * "shade" mode, or when there's no header). Used identically by Root.tsx
+ * (calculateMetadata, drives the real render/CLI/Lambda output) and
+ * page.tsx (the Player preview's compositionHeight) — both call this same
+ * function with the same inputs, so the preview can never show a
+ * different canvas size than what actually gets rendered.
+ */
+export const getCompositionHeight = (
+  header: Pick<
+    HeaderProps,
+    | "words"
+    | "fontSize"
+    | "headerBackdropMode"
+    | "headerBackdropExtendCanvasExtraHeight"
+  >,
+  baseHeight: number,
+  canvasWidth: number = VIDEO_WIDTH,
+): number => baseHeight + getExtendCanvasExtraHeight(header, canvasWidth);

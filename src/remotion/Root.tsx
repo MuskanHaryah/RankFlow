@@ -7,6 +7,7 @@ import {
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
 } from "../../types/constants";
+import { getCompositionHeight } from "./MyComp/headerBackdrop";
 import { Main } from "./MyComp/Main";
 import { NextLogo } from "./MyComp/NextLogo";
 
@@ -31,8 +32,21 @@ export const RemotionRoot: React.FC = () => {
             0,
           );
 
+          // Phase 8, part 2: in "extendCanvas" mode the composition itself
+          // grows taller by the header's measured height (plus any manual
+          // extra), so the header gets a genuine black bar rather than
+          // sitting over footage. In "shade" mode (or no header text) this
+          // adds 0 and the canvas stays exactly VIDEO_HEIGHT, unchanged
+          // from before Phase 8.
+          const height = getCompositionHeight(
+            props.header,
+            VIDEO_HEIGHT,
+            VIDEO_WIDTH,
+          );
+
           return {
             durationInFrames: Math.max(totalDuration, 1),
+            height,
           };
         }}
       />

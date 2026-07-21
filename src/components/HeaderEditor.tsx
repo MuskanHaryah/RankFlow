@@ -7,6 +7,7 @@ import { InputContainer } from "./Container";
 
 type HeaderWord = z.infer<typeof HeaderSchema>["words"][number];
 type HeaderDurationMode = z.infer<typeof HeaderSchema>["durationMode"];
+type HeaderBackdropMode = z.infer<typeof HeaderSchema>["headerBackdropMode"];
 
 const DEFAULT_WORD_COLOR = "#ffffff";
 const DEFAULT_FONT_SIZE = 56;
@@ -17,6 +18,7 @@ const MAX_FONT_SIZE = 96;
 // the near-opaque flat black bar look of the reference design. Extra height
 // is a manual "push the bar further down" override on top of the
 // auto-measured height, for a lengthy header or just stylistic preference.
+const DEFAULT_BACKDROP_MODE: HeaderBackdropMode = "shade";
 const DEFAULT_SHADE_OPACITY = 0.85;
 const MIN_SHADE_OPACITY = 0;
 const MAX_SHADE_OPACITY = 1;
@@ -24,6 +26,13 @@ const SHADE_OPACITY_STEP = 0.01;
 const DEFAULT_SHADE_EXTRA_HEIGHT = 0;
 const MIN_SHADE_EXTRA_HEIGHT = 0;
 const MAX_SHADE_EXTRA_HEIGHT = 400;
+
+// Phase 8, part 2 — extendCanvas's own manual "push the bar further down"
+// override, same idea and range as the shade one above but applied to the
+// grown-canvas black bar instead of a bar drawn over the footage.
+const DEFAULT_EXTEND_CANVAS_EXTRA_HEIGHT = 0;
+const MIN_EXTEND_CANVAS_EXTRA_HEIGHT = 0;
+const MAX_EXTEND_CANVAS_EXTRA_HEIGHT = 400;
 
 /**
  * A one-time title for the whole video (distinct from the per-clip ranking
@@ -48,12 +57,17 @@ export const HeaderEditor: React.FC<{
   const [durationMode, setDurationMode] =
     useState<HeaderDurationMode>("persistent");
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
-  // Phase 8, part 1 — only "shade" is wired up right now (see
-  // headerBackdrop.ts / Main.tsx); the mode is fixed rather than exposed as
-  // a selector until "extendCanvas" is built in part 2.
+  // Phase 8: which backdrop treatment is active. Both "shade" (part 1) and
+  // "extendCanvas" (part 2) are fully wired up now.
+  const [backdropMode, setBackdropMode] = useState<HeaderBackdropMode>(
+    DEFAULT_BACKDROP_MODE,
+  );
   const [shadeOpacity, setShadeOpacity] = useState(DEFAULT_SHADE_OPACITY);
   const [shadeExtraHeight, setShadeExtraHeight] = useState(
     DEFAULT_SHADE_EXTRA_HEIGHT,
+  );
+  const [extendCanvasExtraHeight, setExtendCanvasExtraHeight] = useState(
+    DEFAULT_EXTEND_CANVAS_EXTRA_HEIGHT,
   );
 
   // Same pattern as ClipUploader's onClipsChange: notify the parent via an
@@ -65,16 +79,19 @@ export const HeaderEditor: React.FC<{
       words,
       durationMode,
       fontSize,
-      headerBackdropMode: "shade",
+      headerBackdropMode: backdropMode,
       headerBackdropShadeOpacity: shadeOpacity,
       headerBackdropShadeExtraHeight: shadeExtraHeight,
+      headerBackdropExtendCanvasExtraHeight: extendCanvasExtraHeight,
     });
   }, [
     words,
     durationMode,
     fontSize,
+    backdropMode,
     shadeOpacity,
     shadeExtraHeight,
+    extendCanvasExtraHeight,
     onHeaderChange,
   ]);
 
@@ -173,37 +190,80 @@ export const HeaderEditor: React.FC<{
           </div>
 
           <div className="flex items-center gap-2 flex-wrap mb-3">
-            <label className="text-sm text-subtitle">Shade darkness</label>
-            <input
-              type="range"
-              min={MIN_SHADE_OPACITY}
-              max={MAX_SHADE_OPACITY}
-              step={SHADE_OPACITY_STEP}
-              value={shadeOpacity}
-              onChange={(e) => setShadeOpacity(Number(e.target.value))}
-              className="w-40"
-            />
-            <span className="text-sm text-subtitle w-10">
-              {Math.round(shadeOpacity * 100)}%
-            </span>
+            <label className="text-sm text-subtitle">Header backdrop</label>
+            <select
+              value={backdropMode}
+              onChange={(e) =>
+                setBackdropMode(e.target.value as HeaderBackdropMode)
+              }
+              className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+            >
+              <option value="shade">Shade (bar over footage)</option>
+              <option value="extendCanvas">
+                Extended canvas (black bar above footage)
+              </option>
+            </select>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap mb-3">
-            <label className="text-sm text-subtitle">
-              Extend shade downward
-            </label>
-            <input
-              type="range"
-              min={MIN_SHADE_EXTRA_HEIGHT}
-              max={MAX_SHADE_EXTRA_HEIGHT}
-              value={shadeExtraHeight}
-              onChange={(e) => setShadeExtraHeight(Number(e.target.value))}
-              className="w-40"
-            />
-            <span className="text-sm text-subtitle w-14">
-              {shadeExtraHeight}px
-            </span>
-          </div>
+          {backdropMode === "shade" ? (
+            <>
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                <label className="text-sm text-subtitle">
+                  Shade darkness
+                </label>
+                <input
+                  type="range"
+                  min={MIN_SHADE_OPACITY}
+                  max={MAX_SHADE_OPACITY}
+                  step={SHADE_OPACITY_STEP}
+                  value={shadeOpacity}
+                  onChange={(e) => setShadeOpacity(Number(e.target.value))}
+                  className="w-40"
+                />
+                <span className="text-sm text-subtitle w-10">
+                  {Math.round(shadeOpacity * 100)}%
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                <label className="text-sm text-subtitle">
+                  Extend shade downward
+                </label>
+                <input
+                  type="range"
+                  min={MIN_SHADE_EXTRA_HEIGHT}
+                  max={MAX_SHADE_EXTRA_HEIGHT}
+                  value={shadeExtraHeight}
+                  onChange={(e) =>
+                    setShadeExtraHeight(Number(e.target.value))
+                  }
+                  className="w-40"
+                />
+                <span className="text-sm text-subtitle w-14">
+                  {shadeExtraHeight}px
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap mb-3">
+              <label className="text-sm text-subtitle">
+                Extend canvas downward
+              </label>
+              <input
+                type="range"
+                min={MIN_EXTEND_CANVAS_EXTRA_HEIGHT}
+                max={MAX_EXTEND_CANVAS_EXTRA_HEIGHT}
+                value={extendCanvasExtraHeight}
+                onChange={(e) =>
+                  setExtendCanvasExtraHeight(Number(e.target.value))
+                }
+                className="w-40"
+              />
+              <span className="text-sm text-subtitle w-14">
+                {extendCanvasExtraHeight}px
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center gap-2 flex-wrap">
             <label className="text-sm text-subtitle">Show header</label>

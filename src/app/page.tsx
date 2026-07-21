@@ -17,6 +17,7 @@ import { HeaderEditor } from "../components/HeaderEditor";
 import { RenderControls } from "../components/RenderControls";
 import { Spacing } from "../components/Spacing";
 import { Tips } from "../components/Tips";
+import { getCompositionHeight } from "../remotion/MyComp/headerBackdrop";
 import { Main } from "../remotion/MyComp/Main";
 
 const Home: NextPage = () => {
@@ -64,6 +65,15 @@ const Home: NextPage = () => {
     return Number.isFinite(total) ? Math.max(total, 1) : 1;
   }, [inputProps]);
 
+  // Phase 8, part 2: mirrors Root.tsx's calculateMetadata exactly (same
+  // helper, same inputs), so the live preview's canvas size always matches
+  // what the real render actually produces — in "shade" mode (or no
+  // header) this is just VIDEO_HEIGHT, unchanged from before Phase 8.
+  const compositionHeight = useMemo(
+    () => getCompositionHeight(header, VIDEO_HEIGHT, VIDEO_WIDTH),
+    [header],
+  );
+
   return (
     <div>
       <div className="max-w-screen-md m-auto mb-5 px-4">
@@ -73,7 +83,7 @@ const Home: NextPage = () => {
             inputProps={inputProps}
             durationInFrames={totalDurationInFrames}
             fps={VIDEO_FPS}
-            compositionHeight={VIDEO_HEIGHT}
+            compositionHeight={compositionHeight}
             compositionWidth={VIDEO_WIDTH}
             style={{
               width: "100%",
