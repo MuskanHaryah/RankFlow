@@ -36,6 +36,59 @@ export const ANIMATION_STYLE_OPTIONS: { value: AnimationStyle; label: string }[]
     { value: "bounceLetters", label: "Bounce letters" },
   ];
 
+// Mirrors types/constants.ts's RankStyleOverrideSchema shape (kept as a
+// plain local type, same reasoning as FPS below — this component doesn't
+// need to import the Remotion composition schema to know this shape).
+// null = inherit the project-level default for this badge/title; a
+// present object overrides all six fields together for just this one.
+export type RankStyleOverride = {
+  color: string;
+  fontFamily: string;
+  fontWeight: number;
+  borderEnabled: boolean;
+  borderColor: string;
+  borderWidth: number;
+} | null;
+
+// The subset of the project-level ranking-list style that's relevant to
+// seeding a per-clip override — passed down from page.tsx so that turning
+// an override on pre-fills it with the *current* global look rather than a
+// fixed schema default, which is what makes "start from the shared style,
+// then tweak just this one" actually work as a workflow.
+export type RankingListStyleForSeeding = {
+  badgeColor: string;
+  badgeFontFamily: string;
+  badgeFontWeight: number;
+  badgeBorderEnabled: boolean;
+  badgeBorderColor: string;
+  badgeBorderWidth: number;
+  titleColor: string;
+  titleFontFamily: string;
+  titleFontWeight: number;
+  titleBorderEnabled: boolean;
+  titleBorderColor: string;
+  titleBorderWidth: number;
+};
+
+// A handful of practical, broadly-available font stacks rather than an
+// open text field — avoids typos producing an invalid font-family that
+// silently falls back to the browser default with no indication why.
+export const FONT_FAMILY_OPTIONS: { value: string; label: string }[] = [
+  { value: "inherit", label: "Default" },
+  { value: "Arial, Helvetica, sans-serif", label: "Arial" },
+  { value: "Georgia, serif", label: "Georgia" },
+  { value: "'Courier New', monospace", label: "Courier New" },
+  { value: "Impact, sans-serif", label: "Impact" },
+  { value: "'Comic Sans MS', cursive", label: "Comic Sans" },
+  { value: "Verdana, sans-serif", label: "Verdana" },
+];
+
+export const FONT_WEIGHT_OPTIONS: { value: number; label: string }[] = [
+  { value: 400, label: "Normal" },
+  { value: 700, label: "Bold" },
+  { value: 900, label: "Black" },
+];
+
 export type UploadedClip = {
   id: string;
   file: File;
@@ -47,6 +100,8 @@ export type UploadedClip = {
   rank: number; // which badge slot (1..N) this clip is assigned to
   badgeType: "number" | "emoji";
   badgeEmoji: string; // only used when badgeType is "emoji"
+  badgeStyleOverride: RankStyleOverride; // null = use the project-level badge defaults
+  titleStyleOverride: RankStyleOverride; // null = use the project-level title defaults
   animationStyle: AnimationStyle; // entrance animation for this clip's title reveal
 };
 
@@ -155,6 +210,114 @@ const shuffleOrder = (clipsList: UploadedClip[]): UploadedClip[] => {
 };
 
 /**
+ * Shared per-clip override editor for either the badge or the title — same
+ * six fields either way (color, font family, font weight, border
+ * enabled/color/width). One checkbox switches between "inherit the
+ * project-level default" (override === null) and "customize this one"
+ * (override is an object). Turning it on seeds the object from `seedFrom`
+ * — the *current* global default — so tweaking starts from the shared
+ * look already in use rather than from scratch.
+ */
+const RankStyleOverrideEditor: React.FC<{
+  label: string;
+  override: RankStyleOverride;
+  seedFrom: NonNullable<RankStyleOverride>;
+  onChange: (override: RankStyleOverride) => void;
+}> = ({ label, override, seedFrom, onChange }) => {
+  const isCustomized = override !== null;
+
+  const updateField = <K extends keyof NonNullable<RankStyleOverride>>(
+    field: K,
+    value: NonNullable<RankStyleOverride>[K],
+  ) => {
+    if (!override) return;
+    onChange({ ...override, [field]: value });
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="flex items-center gap-2 text-xs text-subtitle">
+        <input
+          type="checkbox"
+          checked={isCustomized}
+          onChange={(e) =>
+            onChange(e.target.checked ? { ...seedFrom } : null)
+          }
+        />
+        Customize {label} style for this clip
+      </label>
+      {override ? (
+        <div className="flex items-center gap-2 flex-wrap ml-5">
+          <input
+            type="color"
+            value={override.color}
+            onChange={(e) => updateField("color", e.target.value)}
+            title={`${label} color`}
+            className="w-8 h-8 border border-unfocused-border-color rounded-geist"
+          />
+          <select
+            value={override.fontFamily}
+            onChange={(e) => updateField("fontFamily", e.target.value)}
+            className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+          >
+            {FONT_FAMILY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={override.fontWeight}
+            onChange={(e) =>
+              updateField("fontWeight", Number(e.target.value))
+            }
+            className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+          >
+            {FONT_WEIGHT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={override.borderEnabled ? "bordered" : "none"}
+            onChange={(e) =>
+              updateField("borderEnabled", e.target.value === "bordered")
+            }
+            className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+          >
+            <option value="none">No border</option>
+            <option value="bordered">Bordered</option>
+          </select>
+          {override.borderEnabled ? (
+            <>
+              <input
+                type="color"
+                value={override.borderColor}
+                onChange={(e) => updateField("borderColor", e.target.value)}
+                title="Border color"
+                className="w-8 h-8 border border-unfocused-border-color rounded-geist"
+              />
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={override.borderWidth}
+                onChange={(e) =>
+                  updateField("borderWidth", Number(e.target.value))
+                }
+                title="Border thickness (px)"
+                className="w-14 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+              />
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+/**
  * A single draggable row in the clip list. Split out from the main
  * component because useSortable() must be called once per draggable item,
  * not once for the whole list.
@@ -163,20 +326,26 @@ const SortableClipRow: React.FC<{
   clip: UploadedClip;
   clipCount: number;
   dragEnabled: boolean;
+  rankingListStyle: RankingListStyleForSeeding;
   onTitleChange: (id: string, title: string) => void;
   onRankChange: (id: string, rank: number) => void;
   onBadgeTypeChange: (id: string, badgeType: "number" | "emoji") => void;
   onBadgeEmojiChange: (id: string, emoji: string) => void;
   onAnimationStyleChange: (id: string, animationStyle: AnimationStyle) => void;
+  onBadgeStyleOverrideChange: (id: string, override: RankStyleOverride) => void;
+  onTitleStyleOverrideChange: (id: string, override: RankStyleOverride) => void;
 }> = ({
   clip,
   clipCount,
   dragEnabled,
+  rankingListStyle,
   onTitleChange,
   onRankChange,
   onBadgeTypeChange,
   onBadgeEmojiChange,
   onAnimationStyleChange,
+  onBadgeStyleOverrideChange,
+  onTitleStyleOverrideChange,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: clip.id, disabled: !dragEnabled });
@@ -264,6 +433,21 @@ const SortableClipRow: React.FC<{
           />
         ) : null}
       </div>
+      <div className="ml-6">
+        <RankStyleOverrideEditor
+          label="number"
+          override={clip.badgeStyleOverride}
+          seedFrom={{
+            color: rankingListStyle.badgeColor,
+            fontFamily: rankingListStyle.badgeFontFamily,
+            fontWeight: rankingListStyle.badgeFontWeight,
+            borderEnabled: rankingListStyle.badgeBorderEnabled,
+            borderColor: rankingListStyle.badgeBorderColor,
+            borderWidth: rankingListStyle.badgeBorderWidth,
+          }}
+          onChange={(override) => onBadgeStyleOverrideChange(clip.id, override)}
+        />
+      </div>
       <div className="ml-6 flex items-center gap-2 flex-wrap">
         <input
           type="text"
@@ -287,13 +471,29 @@ const SortableClipRow: React.FC<{
           ))}
         </select>
       </div>
+      <div className="ml-6">
+        <RankStyleOverrideEditor
+          label="title"
+          override={clip.titleStyleOverride}
+          seedFrom={{
+            color: rankingListStyle.titleColor,
+            fontFamily: rankingListStyle.titleFontFamily,
+            fontWeight: rankingListStyle.titleFontWeight,
+            borderEnabled: rankingListStyle.titleBorderEnabled,
+            borderColor: rankingListStyle.titleBorderColor,
+            borderWidth: rankingListStyle.titleBorderWidth,
+          }}
+          onChange={(override) => onTitleStyleOverrideChange(clip.id, override)}
+        />
+      </div>
     </li>
   );
 };
 
 export const ClipUploader: React.FC<{
   onClipsChange?: (clips: UploadedClip[]) => void;
-}> = ({ onClipsChange }) => {
+  rankingListStyle: RankingListStyleForSeeding;
+}> = ({ onClipsChange, rankingListStyle }) => {
   const [clips, setClips] = useState<UploadedClip[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
   // Manual = drag-and-drop decides play order directly. Ascending/descending
@@ -346,6 +546,8 @@ export const ClipUploader: React.FC<{
         rank: index + 1,
         badgeType: "number",
         badgeEmoji: "",
+        badgeStyleOverride: null,
+        titleStyleOverride: null,
         animationStyle: "fade",
       }));
 
@@ -503,6 +705,28 @@ export const ClipUploader: React.FC<{
     [],
   );
 
+  const handleBadgeStyleOverrideChange = useCallback(
+    (id: string, badgeStyleOverride: RankStyleOverride) => {
+      setClips((prevClips) =>
+        prevClips.map((clip) =>
+          clip.id === id ? { ...clip, badgeStyleOverride } : clip,
+        ),
+      );
+    },
+    [],
+  );
+
+  const handleTitleStyleOverrideChange = useCallback(
+    (id: string, titleStyleOverride: RankStyleOverride) => {
+      setClips((prevClips) =>
+        prevClips.map((clip) =>
+          clip.id === id ? { ...clip, titleStyleOverride } : clip,
+        ),
+      );
+    },
+    [],
+  );
+
   const handleAnimationStyleChange = useCallback(
     (id: string, animationStyle: AnimationStyle) => {
       setClips((prevClips) =>
@@ -632,11 +856,14 @@ export const ClipUploader: React.FC<{
                     clip={clip}
                     clipCount={clips.length}
                     dragEnabled={playingOrderMode === "manual"}
+                    rankingListStyle={rankingListStyle}
                     onTitleChange={handleTitleChange}
                     onRankChange={handleRankChange}
                     onBadgeTypeChange={handleBadgeTypeChange}
                     onBadgeEmojiChange={handleBadgeEmojiChange}
                     onAnimationStyleChange={handleAnimationStyleChange}
+                    onBadgeStyleOverrideChange={handleBadgeStyleOverrideChange}
+                    onTitleStyleOverrideChange={handleTitleStyleOverrideChange}
                   />
                 ))}
               </ul>

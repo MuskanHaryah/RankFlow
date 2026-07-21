@@ -20,6 +20,81 @@ import {
 type Clip = z.infer<typeof CompositionProps>["clips"][number];
 type ClipRange = Clip & { from: number; to: number };
 type HeaderProps = z.infer<typeof CompositionProps>["header"];
+type RankingListStyleProps = z.infer<typeof CompositionProps>["rankingListStyle"];
+
+// Base sizes at scale = 1 / badgeScale = 1 / titleScale = 1. Everything the
+// ranking list draws is derived from these three, so "resize the whole
+// table" (scale), "resize just the numbers" (badgeScale), and "resize just
+// the titles" (titleScale) all move a genuinely shared layout rather than
+// three independently-drifting copies of it.
+const BASE_BADGE_FONT_SIZE = 48;
+const BASE_BADGE_MIN_WIDTH = 60;
+const BASE_TITLE_FONT_SIZE = 42;
+const BASE_ROW_GAP = 18;
+const BASE_ITEM_GAP = 16;
+
+type ResolvedRankElementStyle = {
+  color: string;
+  fontFamily: string;
+  fontWeight: number;
+  borderEnabled: boolean;
+  borderColor: string;
+  borderWidth: number;
+};
+
+/**
+ * A clip's badgeStyleOverride, if set, otherwise the project-level badge
+ * defaults. Called once per clip per render — cheap, and keeps "what
+ * style does this badge actually use" in one place rather than inlined at
+ * every point badge styling is read.
+ */
+const resolveBadgeStyle = (
+  clip: Clip,
+  listStyle: RankingListStyleProps,
+): ResolvedRankElementStyle =>
+  clip.badgeStyleOverride ?? {
+    color: listStyle.badgeColor,
+    fontFamily: listStyle.badgeFontFamily,
+    fontWeight: listStyle.badgeFontWeight,
+    borderEnabled: listStyle.badgeBorderEnabled,
+    borderColor: listStyle.badgeBorderColor,
+    borderWidth: listStyle.badgeBorderWidth,
+  };
+
+/** Same idea as resolveBadgeStyle, for the title text instead. */
+const resolveTitleStyle = (
+  clip: Clip,
+  listStyle: RankingListStyleProps,
+): ResolvedRankElementStyle =>
+  clip.titleStyleOverride ?? {
+    color: listStyle.titleColor,
+    fontFamily: listStyle.titleFontFamily,
+    fontWeight: listStyle.titleFontWeight,
+    borderEnabled: listStyle.titleBorderEnabled,
+    borderColor: listStyle.titleBorderColor,
+    borderWidth: listStyle.titleBorderWidth,
+  };
+
+/**
+ * Renders the border as a stroke drawn directly on the glyph's own outline
+ * (`-webkit-text-stroke`) rather than a background shape — there's no
+ * colored circle/box behind the number or title, just a thin outline on
+ * the letterforms themselves. `paintOrder: "stroke fill"` makes Chromium
+ * paint the stroke first and the fill color on top, so the interior of
+ * each glyph still shows the assigned text color cleanly instead of the
+ * stroke color bleeding inward over a thin glyph. Returns {} (no stroke at
+ * all) when the border is turned off — deliberately not just width: 0, so
+ * "None" can't leave a stray color/width implying a border is still active.
+ */
+const textStrokeStyle = (
+  resolved: ResolvedRankElementStyle,
+): React.CSSProperties =>
+  resolved.borderEnabled
+    ? {
+        WebkitTextStroke: `${resolved.borderWidth}px ${resolved.borderColor}`,
+        paintOrder: "stroke fill",
+      }
+    : {};
 
 // How long the entrance animation takes to finish, in frames, once a
 // clip's title first reveals. Purely the "appear" moment — has no effect
@@ -242,34 +317,56 @@ const computeClipRanges = (clips: Clip[]): ClipRange[] => {
  * Sequence). Every rank slot (1..N) is visible from frame 0. A slot's
  * title only reveals once its clip's range has started, stays bright
  * while that clip is the one currently playing, and dims once playback
- * has moved on to a later clip.
+ * has moved on to a later clip — the dim/bright effect is layered on as
+ * opacity over whichever title color is resolved for that clip, so a
+ * custom title color and the play-state effect never fight each other.
+ * The badge's own color/font/border, by contrast, stays fixed at
+ * whatever's resolved for it regardless of play state — a rank's assigned
+ * identity (e.g. gold for #1) isn't something that should dim.
  */
-const RankingList: React.FC<{ clipRanges: ClipRange[] }> = ({
-  clipRanges,
-}) => {
+const RankingList: React.FC<{
+  clipRanges: ClipRange[];
+  listStyle: RankingListStyleProps;
+}> = ({ clipRanges, listStyle }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const sortedByRank = clipRanges.slice().sort((a, b) => a.rank - b.rank);
 
+  const badgeFontSize = BASE_BADGE_FONT_SIZE * listStyle.scale * listStyle.badgeScale;
+  const badgeMinWidth = BASE_BADGE_MIN_WIDTH * listStyle.scale * listStyle.badgeScale;
+  const titleFontSize = BASE_TITLE_FONT_SIZE * listStyle.scale * listStyle.titleScale;
+  const rowGap = BASE_ROW_GAP * listStyle.scale;
+  const itemGap = BASE_ITEM_GAP * listStyle.scale;
+
   return (
-    <AbsoluteFill style={{ padding: 60, justifyContent: "center" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <AbsoluteFill
+      style={{
+        padding: 60,
+        justifyContent: "center",
+        transform: `translateY(${listStyle.verticalOffset}px)`,
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: rowGap }}>
         {sortedByRank.map((clip) => {
           const hasStarted = frame >= clip.from;
           const isCurrent = frame >= clip.from && frame < clip.to;
+          const badgeStyle = resolveBadgeStyle(clip, listStyle);
+          const titleStyle = resolveTitleStyle(clip, listStyle);
 
           return (
             <div
               key={clip.id}
-              style={{ display: "flex", alignItems: "center", gap: 16 }}
+              style={{ display: "flex", alignItems: "center", gap: itemGap }}
             >
               <span
                 style={{
-                  fontSize: 48,
-                  fontWeight: 900,
-                  color: isCurrent ? "#FFD54A" : "white",
+                  fontSize: badgeFontSize,
+                  fontWeight: badgeStyle.fontWeight,
+                  fontFamily: badgeStyle.fontFamily,
+                  color: badgeStyle.color,
                   textShadow: "0 2px 6px rgba(0,0,0,0.7)",
-                  minWidth: 60,
+                  minWidth: badgeMinWidth,
+                  ...textStrokeStyle(badgeStyle),
                 }}
               >
                 {clip.badgeType === "emoji" && clip.badgeEmoji
@@ -283,12 +380,23 @@ const RankingList: React.FC<{ clipRanges: ClipRange[] }> = ({
                   fps={fps}
                   animationStyle={clip.animationStyle}
                   textStyle={{
-                    fontSize: 42,
-                    fontWeight: 700,
+                    fontSize: titleFontSize,
+                    fontWeight: titleStyle.fontWeight,
+                    fontFamily: titleStyle.fontFamily,
+                    // AnimatedTitle's own entrance animation drives this
+                    // span's `opacity` (0 -> 1) for several of the reveal
+                    // styles, and its motionStyle is spread after this
+                    // textStyle — so a separate `opacity` here would get
+                    // silently clobbered once the reveal finishes. The
+                    // dim-when-not-current effect is baked into the color
+                    // itself instead, the same principle the original
+                    // rgba-alpha approach used, just generalized to work
+                    // with any base color the person picks, not only white.
                     color: isCurrent
-                      ? "rgba(255,255,255,1)"
-                      : "rgba(255,255,255,0.35)",
+                      ? titleStyle.color
+                      : `color-mix(in srgb, ${titleStyle.color} 35%, transparent)`,
                     textShadow: "0 2px 6px rgba(0,0,0,0.7)",
+                    ...textStrokeStyle(titleStyle),
                   }}
                 />
               ) : null}
@@ -411,7 +519,11 @@ const Header: React.FC<{ header: HeaderProps }> = ({ header }) => {
   );
 };
 
-export const Main = ({ clips, header }: z.infer<typeof CompositionProps>) => {
+export const Main = ({
+  clips,
+  header,
+  rankingListStyle,
+}: z.infer<typeof CompositionProps>) => {
   const clipRanges = computeClipRanges(clips);
   const { width } = useVideoConfig();
 
@@ -439,7 +551,7 @@ export const Main = ({ clips, header }: z.infer<typeof CompositionProps>) => {
       </AbsoluteFill>
       <HeaderShadeBackdrop header={header} canvasWidth={width} />
       <AbsoluteFill style={{ top: videoTrackOffset }}>
-        <RankingList clipRanges={clipRanges} />
+        <RankingList clipRanges={clipRanges} listStyle={rankingListStyle} />
       </AbsoluteFill>
       <Header header={header} />
     </AbsoluteFill>

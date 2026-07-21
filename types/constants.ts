@@ -2,6 +2,29 @@ import { z } from "zod";
 
 export const COMP_NAME = "RankFlowComp";
 
+// Phase 9 — one bundle of overridable style properties, shared by both the
+// badge/number and the title text. null on a clip means "inherit every one
+// of these from the project-level defaults below"; a present object
+// overrides ALL of them together for that one badge or title. Bundling
+// them (instead of 6 separate override toggles per element per clip) is a
+// deliberate simplification — see the guide's own warning about too many
+// independently-configurable per-clip knobs. Turning an override on in the
+// UI should pre-fill it with the current global values, so the person is
+// tweaking from a sensible starting point rather than blank fields.
+export const RankStyleOverrideSchema = z
+  .object({
+    color: z.string(),
+    fontFamily: z.string(),
+    fontWeight: z.number(),
+    // "None" is `borderEnabled: false` — not just borderWidth: 0 — so a
+    // person picking "no border" doesn't leave a stray borderColor/width
+    // sitting around implying one is still active.
+    borderEnabled: z.boolean(),
+    borderColor: z.string(),
+    borderWidth: z.number(),
+  })
+  .nullable();
+
 export const ClipSchema = z.object({
   id: z.string(),
   // A URL the Remotion <Video> component can load: a blob: URL during the
@@ -20,6 +43,18 @@ export const ClipSchema = z.object({
   badgeType: z.enum(["number", "emoji"]),
   // Only used when badgeType is "emoji"; ignored otherwise.
   badgeEmoji: z.string(),
+  // Phase 9: null = this badge uses the project-level badge defaults
+  // below. A present object overrides color/font/border for just this
+  // badge — e.g. rank 1 in gold while every other rank stays the shared
+  // default look.
+  badgeStyleOverride: RankStyleOverrideSchema,
+  // Phase 9: same idea as badgeStyleOverride, but for this clip's title
+  // text instead. Deliberately a separate override from the badge's — a
+  // customized number color/border says nothing about the title, and vice
+  // versa. Note: the title's color here is its *base* color; the existing
+  // bright-when-playing/dimmed-otherwise effect is layered on top as
+  // opacity, not baked into this color, so the two don't fight each other.
+  titleStyleOverride: RankStyleOverrideSchema,
   // Controls the entrance animation played when this clip's title first
   // reveals (i.e. the moment its clip starts playing). Does not affect the
   // dim transition when the clip finishes — that stays an instant color
@@ -92,9 +127,72 @@ export const HeaderSchema = z.object({
   headerBackdropExtendCanvasExtraHeight: z.number(),
 });
 
+// Phase 9 — project-level ranking-list visual defaults. Every clip uses
+// these unless it sets its own badgeStyleOverride / titleStyleOverride
+// (see ClipSchema above).
+export const RankingListStyleSchema = z.object({
+  // Multiplies every size value in the ranking list — badge font size,
+  // title font size, badge minimum width, and the gaps between rows/items
+  // — together, so resizing "the whole ranking table" moves badge and
+  // title as one proportioned unit. badgeScale/titleScale below then let
+  // badge size and title size be fine-tuned independently on top of this,
+  // e.g. making numbers noticeably bigger than their titles without
+  // affecting overall list size.
+  scale: z.number(),
+  badgeScale: z.number(),
+  titleScale: z.number(),
+  // Moves the entire list up/down from its default anchored position.
+  // Negative = up, positive = down. A small step size in the UI (rather
+  // than a coarse slider) is what makes this feel like "nudging" rather
+  // than jumping to a new spot.
+  verticalOffset: z.number(),
+
+  badgeColor: z.string(),
+  badgeFontFamily: z.string(),
+  badgeFontWeight: z.number(),
+  badgeBorderEnabled: z.boolean(),
+  badgeBorderColor: z.string(),
+  badgeBorderWidth: z.number(),
+
+  // titleColor is a *base* color — the existing bright-when-playing /
+  // dimmed-otherwise behavior is layered on top as opacity at render time,
+  // not baked into this value, so choosing a title color doesn't remove
+  // the play-state effect.
+  titleColor: z.string(),
+  titleFontFamily: z.string(),
+  titleFontWeight: z.number(),
+  titleBorderEnabled: z.boolean(),
+  titleBorderColor: z.string(),
+  titleBorderWidth: z.number(),
+});
+
+export const defaultRankingListStyle: z.infer<typeof RankingListStyleSchema> =
+  {
+    scale: 1,
+    badgeScale: 1,
+    titleScale: 1,
+    verticalOffset: 0,
+
+    badgeColor: "#ffffff",
+    badgeFontFamily: "inherit",
+    badgeFontWeight: 900,
+    // "Default should be black and tiny."
+    badgeBorderEnabled: true,
+    badgeBorderColor: "#000000",
+    badgeBorderWidth: 2,
+
+    titleColor: "#ffffff",
+    titleFontFamily: "inherit",
+    titleFontWeight: 700,
+    titleBorderEnabled: true,
+    titleBorderColor: "#000000",
+    titleBorderWidth: 2,
+  };
+
 export const CompositionProps = z.object({
   clips: z.array(ClipSchema),
   header: HeaderSchema,
+  rankingListStyle: RankingListStyleSchema,
 });
 
 export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
@@ -110,6 +208,7 @@ export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
     headerBackdropShadeExtraHeight: 0,
     headerBackdropExtendCanvasExtraHeight: 0,
   },
+  rankingListStyle: defaultRankingListStyle,
 };
 
 // How many seconds the header stays on screen when durationMode is

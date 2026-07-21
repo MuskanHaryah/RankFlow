@@ -8,12 +8,14 @@ import {
   CompositionProps,
   defaultMyCompProps,
   HeaderSchema,
+  RankingListStyleSchema,
   VIDEO_FPS,
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
 } from "../../types/constants";
 import { ClipUploader, UploadedClip } from "../components/ClipUploader";
 import { HeaderEditor } from "../components/HeaderEditor";
+import { RankingListStyleEditor } from "../components/RankingListStyleEditor";
 import { RenderControls } from "../components/RenderControls";
 import { Spacing } from "../components/Spacing";
 import { Tips } from "../components/Tips";
@@ -27,6 +29,11 @@ const Home: NextPage = () => {
   const [header, setHeader] = useState<z.infer<typeof HeaderSchema>>(
     defaultMyCompProps.header,
   );
+  // Same lifted pattern again: RankingListStyleEditor owns the actual
+  // editing state, this just holds the latest reported value.
+  const [rankingListStyle, setRankingListStyle] = useState<
+    z.infer<typeof RankingListStyleSchema>
+  >(defaultMyCompProps.rankingListStyle);
 
   // Only include clips with a real, usable duration — clips still showing
   // "reading duration…" (null) or that failed validation are deliberately
@@ -51,11 +58,14 @@ const Home: NextPage = () => {
           rank: clip.rank,
           badgeType: clip.badgeType,
           badgeEmoji: clip.badgeEmoji,
+          badgeStyleOverride: clip.badgeStyleOverride,
+          titleStyleOverride: clip.titleStyleOverride,
           animationStyle: clip.animationStyle,
         })),
       header,
+      rankingListStyle,
     };
-  }, [uploadedClips, header]);
+  }, [uploadedClips, header, rankingListStyle]);
 
   const totalDurationInFrames = useMemo(() => {
     const total = inputProps.clips.reduce(
@@ -96,7 +106,12 @@ const Home: NextPage = () => {
         </div>
         <HeaderEditor onHeaderChange={setHeader} />
         <Spacing></Spacing>
-        <ClipUploader onClipsChange={setUploadedClips} />
+        <RankingListStyleEditor onStyleChange={setRankingListStyle} />
+        <Spacing></Spacing>
+        <ClipUploader
+          onClipsChange={setUploadedClips}
+          rankingListStyle={rankingListStyle}
+        />
         <Spacing></Spacing>
         <RenderControls inputProps={inputProps}></RenderControls>
         <Spacing></Spacing>
