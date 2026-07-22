@@ -17,7 +17,7 @@ import { ClipUploader, UploadedClip } from "../components/ClipUploader";
 import { HeaderEditor } from "../components/HeaderEditor";
 import { RankingListStyleEditor } from "../components/RankingListStyleEditor";
 import { RenderControls } from "../components/RenderControls";
-import { Spacing } from "../components/Spacing";
+import { Section } from "../components/Section";
 import { Tips } from "../components/Tips";
 import { getCompositionHeight } from "../remotion/MyComp/headerBackdrop";
 import { Main } from "../remotion/MyComp/Main";
@@ -84,42 +84,98 @@ const Home: NextPage = () => {
     [header],
   );
 
+  // Purely presentational readouts for the status strip below — derived
+  // from state that already exists, doesn't affect rendering/export.
+  const clipCount = inputProps.clips.length;
+  const totalSeconds = (totalDurationInFrames / VIDEO_FPS).toFixed(1);
+
   return (
-    <div>
-      <div className="max-w-screen-md m-auto mb-5 px-4">
-        <div className="overflow-hidden rounded-geist shadow-[0_0_200px_rgba(0,0,0,0.15)] mb-10 mt-16">
-          <Player
-            component={Main}
-            inputProps={inputProps}
-            durationInFrames={totalDurationInFrames}
-            fps={VIDEO_FPS}
-            compositionHeight={compositionHeight}
-            compositionWidth={VIDEO_WIDTH}
-            style={{
-              width: "100%",
-            }}
-            controls
-            autoPlay
-            loop
-            initiallyMuted
-          />
+    <div className="min-h-screen bg-background font-geist">
+      <header className="sticky top-0 z-20 border-b border-unfocused-border-color bg-background/85 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-4 py-4 lg:px-8">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-accent text-xs font-bold text-accent-contrast">
+              1
+            </span>
+            <div>
+              <h1 className="text-base font-bold leading-none tracking-tight text-foreground">
+                RankFlow
+              </h1>
+              <p className="mt-1 text-[11px] leading-none text-subtitle">
+                Ranking-video maker
+              </p>
+            </div>
+          </div>
+          <div className="hidden items-center gap-3 font-mono-tabular text-xs text-subtitle sm:flex">
+            <span>
+              {clipCount} clip{clipCount === 1 ? "" : "s"}
+            </span>
+            <span className="text-unfocused-border-color" aria-hidden="true">
+              /
+            </span>
+            <span>{totalSeconds}s</span>
+            <span className="text-unfocused-border-color" aria-hidden="true">
+              /
+            </span>
+            <span>
+              {VIDEO_WIDTH}×{compositionHeight}
+            </span>
+          </div>
         </div>
-        <HeaderEditor onHeaderChange={setHeader} />
-        <Spacing></Spacing>
-        <RankingListStyleEditor onStyleChange={setRankingListStyle} />
-        <Spacing></Spacing>
-        <ClipUploader
-          onClipsChange={setUploadedClips}
-          rankingListStyle={rankingListStyle}
-        />
-        <Spacing></Spacing>
-        <RenderControls inputProps={inputProps}></RenderControls>
-        <Spacing></Spacing>
-        <Spacing></Spacing>
-        <Spacing></Spacing>
-        <Spacing></Spacing>
-        <Tips></Tips>
-      </div>
+      </header>
+
+      <main className="mx-auto max-w-[1400px] px-4 py-8 lg:px-8">
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start lg:gap-10">
+          {/* Controls — scrolls normally, sits on the left on desktop */}
+          <div className="order-2 flex flex-col gap-8 lg:order-1">
+            <Section label="Header">
+              <HeaderEditor onHeaderChange={setHeader} />
+            </Section>
+            <Section label="Ranking list style">
+              <RankingListStyleEditor onStyleChange={setRankingListStyle} />
+            </Section>
+            <Section label="Clips">
+              <ClipUploader
+                onClipsChange={setUploadedClips}
+                rankingListStyle={rankingListStyle}
+              />
+            </Section>
+            <Section label="Export">
+              <RenderControls inputProps={inputProps}></RenderControls>
+            </Section>
+          </div>
+
+          {/* Preview — pinned on the right on desktop, on top on mobile
+              (matching where it already sat before this layout change) */}
+          <div className="order-1 mb-8 lg:sticky lg:top-[92px] lg:order-2 lg:mb-0">
+            <div className="overflow-hidden rounded-geist border border-unfocused-border-color bg-panel shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_24px_60px_-24px_rgba(0,0,0,0.7)]">
+              <Player
+                component={Main}
+                inputProps={inputProps}
+                durationInFrames={totalDurationInFrames}
+                fps={VIDEO_FPS}
+                compositionHeight={compositionHeight}
+                compositionWidth={VIDEO_WIDTH}
+                style={{
+                  width: "100%",
+                }}
+                controls
+                autoPlay
+                loop
+                initiallyMuted
+              />
+            </div>
+            <p className="mt-3 text-center font-mono-tabular text-[11px] text-subtitle">
+              {VIDEO_WIDTH} × {compositionHeight} · {VIDEO_FPS}fps ·{" "}
+              {totalSeconds}s
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-16 border-t border-unfocused-border-color pt-8">
+          <Tips></Tips>
+        </div>
+      </main>
     </div>
   );
 };

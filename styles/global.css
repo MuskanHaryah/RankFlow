@@ -1,46 +1,73 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens
+ * -------------
+ * Palette: a graphite/ink base (not pure black — pure black reads flat and
+ * unfinished) with a single restrained accent: a muted brass/gold. That
+ * choice is grounded in what this app actually makes — ranking/countdown
+ * videos, where the badges are numbers and #1 is a medal color — rather
+ * than a generic SaaS blue or an AI-cliché purple/cyan gradient.
+ */
 :root {
-  --background: #fff;
-  --foreground: #000;
-  --unfocused-border-color: #eaeaea;
-  --focused-border-color: #666;
+  --background: #0a0b0d;
+  --panel: #131519;
+  --panel-raised: #1a1d22;
+  --foreground: #edeef0;
+  --subtitle: #8b909a;
 
-  --button-disabled-color: #fafafa;
-  --disabled-text-color: #999;
+  --unfocused-border-color: #23262c;
+  --focused-border-color: #3a3f47;
 
-  --geist-border-radius: 5px;
+  --accent: #d6a94a;
+  --accent-strong: #e8be68;
+  --accent-soft: rgba(214, 169, 74, 0.14);
+  --accent-contrast: #16130a;
+
+  --button-disabled-color: #1a1d22;
+  --disabled-text-color: #565a61;
+
+  --geist-border-radius: 8px;
   --geist-quarter-pad: 6px;
   --geist-half-pad: 12px;
   --geist-pad: 24px;
-  --geist-font: "Inter";
+  --geist-font: var(--font-ui, "Inter");
+  --geist-font-mono: var(--font-mono, "JetBrains Mono");
 
-  --geist-error: #e00;
+  --geist-error: #e5484d;
 
-  --subtitle: #666;
+  --scrollbar-track: #0f1114;
 }
 
-@media (prefers-color-scheme: dark) {
+/* This app is designed dark-first — the ranking/countdown format it
+   produces is watched on dark phone UIs, and the editor mirrors that. */
+@media (prefers-color-scheme: light) {
   :root {
-    --background: #000000;
-    --unfocused-border-color: #333;
-    --focused-border-color: #888;
-    --foreground: #fff;
-    --button-disabled-color: #111;
-    --geist-error: red;
-    --subtitle: #8d8d8d;
+    --background: #0a0b0d;
+    --panel: #131519;
+    --panel-raised: #1a1d22;
+    --foreground: #edeef0;
+    --subtitle: #8b909a;
+    --unfocused-border-color: #23262c;
+    --focused-border-color: #3a3f47;
   }
 }
 
 @theme {
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
   --color-unfocused-border-color: var(--unfocused-border-color);
   --color-focused-border-color: var(--focused-border-color);
   --color-button-disabled-color: var(--button-disabled-color);
   --color-disabled-text-color: var(--disabled-text-color);
   --color-geist-error: var(--geist-error);
   --color-subtitle: var(--subtitle);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-contrast: var(--accent-contrast);
   --padding-geist-quarter: var(--geist-quarter-pad);
   --padding-geist-half: var(--geist-half-pad);
   --padding-geist: var(--geist-pad);
@@ -49,6 +76,7 @@
   --spacing-geist-quarter: var(--geist-quarter-pad);
   --radius-geist: var(--geist-border-radius);
   --font-geist: var(--geist-font);
+  --font-geist-mono: var(--geist-font-mono);
   --animate-spinner: spinner 1.2s linear infinite;
 
   @keyframes spinner {
@@ -59,4 +87,155 @@
       opacity: 0.15;
     }
   }
+}
+
+body {
+  color-scheme: dark;
+}
+
+/* Thin, dark scrollbars — small detail, but raw OS scrollbars are one of
+   the fastest tells that a dark UI wasn't actually finished. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--unfocused-border-color) var(--scrollbar-track);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--unfocused-border-color);
+  border-radius: 999px;
+  border: 2px solid var(--scrollbar-track);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--focused-border-color);
+}
+
+/*
+ * Native control styling
+ * -----------------------
+ * Every panel in this app (Header, Ranking list style, Clips, Export)
+ * builds its <select>/<input type="range">/<input type="color"> from
+ * plain native elements with only color/border utility classes applied —
+ * so browsers still render their own default arrow/thumb/track chrome on
+ * top. That mismatch (styled surroundings, unstyled control) is what read
+ * as "unfinished." These rules restyle the controls themselves, globally,
+ * so every panel picks it up without any changes to their own code.
+ */
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%238B909A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px !important;
+  cursor: pointer;
+}
+select:hover {
+  border-color: var(--focused-border-color) !important;
+}
+select:focus-visible {
+  outline: none;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+input[type="text"]:focus-visible,
+input[type="search"]:focus-visible,
+input[type="number"]:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+input[type="range"] {
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--unfocused-border-color);
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid var(--accent-contrast);
+  box-shadow: 0 0 0 1px var(--accent);
+  cursor: pointer;
+  transition: transform 0.12s ease-in-out;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid var(--accent-contrast);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--unfocused-border-color);
+}
+
+input[type="color"] {
+  appearance: none;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+}
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 3px;
+}
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 5px;
+}
+input[type="color"]::-moz-color-swatch {
+  border: none;
+  border-radius: 5px;
+}
+
+input[type="file"] {
+  color: var(--subtitle);
+  font-size: 0.8125rem;
+}
+input[type="file"]::file-selector-button {
+  appearance: none;
+  border: 1px solid var(--unfocused-border-color);
+  background: var(--panel-raised);
+  color: var(--foreground);
+  border-radius: var(--geist-border-radius);
+  padding: 7px 14px;
+  margin-right: 12px;
+  font-family: var(--geist-font);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.12s ease-in-out, background 0.12s ease-in-out;
+}
+input[type="file"]::file-selector-button:hover {
+  border-color: var(--focused-border-color);
+  background: var(--panel);
+}
+
+/* Numeric/technical readouts (frame counts, px offsets, canvas size,
+   durations, percentages) get a tabular mono treatment — a small,
+   deliberate nod to the fact this whole tool is fundamentally about
+   numbers (ranks, timing, dimensions), not just a stylistic flourish. */
+.font-mono-tabular {
+  font-family: var(--geist-font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
