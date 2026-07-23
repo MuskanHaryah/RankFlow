@@ -235,19 +235,20 @@ const RankStyleOverrideEditor: React.FC<{
   };
 
   return (
-    <div className="flex flex-col gap-1">
-      <label className="flex items-center gap-2 text-xs text-subtitle">
+    <div className="flex flex-col gap-2">
+      <label className="flex items-center gap-2 text-xs text-subtitle cursor-pointer">
         <input
           type="checkbox"
           checked={isCustomized}
           onChange={(e) =>
             onChange(e.target.checked ? { ...seedFrom } : null)
           }
+          className="h-3.5 w-3.5 accent-accent cursor-pointer"
         />
         Customize {label} style for this clip
       </label>
       {override ? (
-        <div className="flex items-center gap-2 flex-wrap ml-5">
+        <div className="flex items-center gap-2 flex-wrap control-group">
           <input
             type="color"
             value={override.color}
@@ -356,13 +357,28 @@ const SortableClipRow: React.FC<{
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const statusPill =
+    clip.uploadStatus === "uploading" ? (
+      <span className="rounded-full bg-panel-raised px-2 py-0.5 text-[11px] text-subtitle">
+        uploading…
+      </span>
+    ) : clip.uploadStatus === "done" ? (
+      <span className="rounded-full bg-geist-success/10 px-2 py-0.5 text-[11px] text-geist-success">
+        uploaded
+      </span>
+    ) : (
+      <span className="rounded-full bg-geist-error/10 px-2 py-0.5 text-[11px] text-geist-error">
+        upload failed
+      </span>
+    );
+
   return (
     <li
       ref={setNodeRef}
       style={style}
-      className="flex flex-col gap-1 text-sm bg-background py-1"
+      className="flex flex-col gap-3 rounded-geist border border-unfocused-border-color bg-background p-geist-half text-sm"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span
           {...attributes}
           {...(dragEnabled ? listeners : {})}
@@ -379,112 +395,121 @@ const SortableClipRow: React.FC<{
         >
           ⠿
         </span>
-        <span>
-          Plays #{clip.order} — {clip.file.name} (
-          {(clip.file.size / 1024 / 1024).toFixed(1)} MB) —{" "}
-          {clip.durationInFrames === null ? (
-            <span className="text-subtitle">reading duration…</span>
-          ) : (
-            <span>
-              {(clip.durationInFrames / FPS).toFixed(1)}s (
-              {clip.durationInFrames} frames)
-            </span>
-          )}
-          {" — "}
-          {clip.uploadStatus === "uploading" ? (
-            <span className="text-subtitle">uploading…</span>
-          ) : clip.uploadStatus === "done" ? (
-            <span className="text-green-500">uploaded</span>
-          ) : (
-            <span className="text-red-500">upload failed</span>
-          )}
+        <span className="font-mono-tabular text-xs text-subtitle">
+          #{clip.order}
         </span>
+        <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+          {clip.file.name}
+        </span>
+        <span className="font-mono-tabular text-xs text-subtitle">
+          {(clip.file.size / 1024 / 1024).toFixed(1)} MB
+        </span>
+        <span className="font-mono-tabular text-xs text-subtitle">
+          {clip.durationInFrames === null
+            ? "reading duration…"
+            : `${(clip.durationInFrames / FPS).toFixed(1)}s`}
+        </span>
+        {statusPill}
       </div>
-      <div className="ml-6 flex items-center gap-2 flex-wrap">
-        <label className="text-subtitle text-xs">Rank</label>
-        <input
-          type="number"
-          min={1}
-          max={clipCount}
-          value={clip.rank}
-          onChange={(e) => onRankChange(clip.id, Number(e.target.value))}
-          className="w-14 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-        />
-        <select
-          value={clip.badgeType}
-          onChange={(e) =>
-            onBadgeTypeChange(
-              clip.id,
-              e.target.value as "number" | "emoji",
-            )
-          }
-          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-        >
-          <option value="number">Number badge</option>
-          <option value="emoji">Emoji badge</option>
-        </select>
-        {clip.badgeType === "emoji" ? (
-          <input
-            type="text"
-            value={clip.badgeEmoji}
-            onChange={(e) => onBadgeEmojiChange(clip.id, e.target.value)}
-            placeholder="🔥"
-            className="w-16 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+
+      <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-3">
+        <div className="field-row">
+          <label className="field-row-label">Rank &amp; badge</label>
+          <div className="field-row-controls control-group">
+            <input
+              type="number"
+              min={1}
+              max={clipCount}
+              value={clip.rank}
+              onChange={(e) => onRankChange(clip.id, Number(e.target.value))}
+              className="w-14 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+            />
+            <select
+              value={clip.badgeType}
+              onChange={(e) =>
+                onBadgeTypeChange(clip.id, e.target.value as "number" | "emoji")
+              }
+              className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+            >
+              <option value="number">Number badge</option>
+              <option value="emoji">Emoji badge</option>
+            </select>
+            {clip.badgeType === "emoji" ? (
+              <input
+                type="text"
+                value={clip.badgeEmoji}
+                onChange={(e) => onBadgeEmojiChange(clip.id, e.target.value)}
+                placeholder="🔥"
+                className="w-16 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+              />
+            ) : null}
+          </div>
+        </div>
+
+        <div className="sm:pl-[10.5rem]">
+          <RankStyleOverrideEditor
+            label="number"
+            override={clip.badgeStyleOverride}
+            seedFrom={{
+              color: rankingListStyle.badgeColor,
+              fontFamily: rankingListStyle.badgeFontFamily,
+              fontWeight: rankingListStyle.badgeFontWeight,
+              borderEnabled: rankingListStyle.badgeBorderEnabled,
+              borderColor: rankingListStyle.badgeBorderColor,
+              borderWidth: rankingListStyle.badgeBorderWidth,
+            }}
+            onChange={(override) =>
+              onBadgeStyleOverrideChange(clip.id, override)
+            }
           />
-        ) : null}
-      </div>
-      <div className="ml-6">
-        <RankStyleOverrideEditor
-          label="number"
-          override={clip.badgeStyleOverride}
-          seedFrom={{
-            color: rankingListStyle.badgeColor,
-            fontFamily: rankingListStyle.badgeFontFamily,
-            fontWeight: rankingListStyle.badgeFontWeight,
-            borderEnabled: rankingListStyle.badgeBorderEnabled,
-            borderColor: rankingListStyle.badgeBorderColor,
-            borderWidth: rankingListStyle.badgeBorderWidth,
-          }}
-          onChange={(override) => onBadgeStyleOverrideChange(clip.id, override)}
-        />
-      </div>
-      <div className="ml-6 flex items-center gap-2 flex-wrap">
-        <input
-          type="text"
-          value={clip.title}
-          onChange={(e) => onTitleChange(clip.id, e.target.value)}
-          placeholder="Title for this clip (optional)"
-          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-        />
-        <label className="text-subtitle text-xs">Reveal animation</label>
-        <select
-          value={clip.animationStyle}
-          onChange={(e) =>
-            onAnimationStyleChange(clip.id, e.target.value as AnimationStyle)
-          }
-          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-        >
-          {ANIMATION_STYLE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="ml-6">
-        <RankStyleOverrideEditor
-          label="title"
-          override={clip.titleStyleOverride}
-          seedFrom={{
-            color: rankingListStyle.titleColor,
-            fontFamily: rankingListStyle.titleFontFamily,
-            fontWeight: rankingListStyle.titleFontWeight,
-            borderEnabled: rankingListStyle.titleBorderEnabled,
-            borderColor: rankingListStyle.titleBorderColor,
-            borderWidth: rankingListStyle.titleBorderWidth,
-          }}
-          onChange={(override) => onTitleStyleOverrideChange(clip.id, override)}
-        />
+        </div>
+
+        <div className="field-row">
+          <label className="field-row-label">Title &amp; reveal</label>
+          <div className="field-row-controls control-group">
+            <input
+              type="text"
+              value={clip.title}
+              onChange={(e) => onTitleChange(clip.id, e.target.value)}
+              placeholder="Title for this clip (optional)"
+              className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+            />
+            <select
+              value={clip.animationStyle}
+              onChange={(e) =>
+                onAnimationStyleChange(
+                  clip.id,
+                  e.target.value as AnimationStyle,
+                )
+              }
+              className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+            >
+              {ANIMATION_STYLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="sm:pl-[10.5rem]">
+          <RankStyleOverrideEditor
+            label="title"
+            override={clip.titleStyleOverride}
+            seedFrom={{
+              color: rankingListStyle.titleColor,
+              fontFamily: rankingListStyle.titleFontFamily,
+              fontWeight: rankingListStyle.titleFontWeight,
+              borderEnabled: rankingListStyle.titleBorderEnabled,
+              borderColor: rankingListStyle.titleBorderColor,
+              borderWidth: rankingListStyle.titleBorderWidth,
+            }}
+            onChange={(override) =>
+              onTitleStyleOverrideChange(clip.id, override)
+            }
+          />
+        </div>
       </div>
     </li>
   );
@@ -773,73 +798,87 @@ export const ClipUploader: React.FC<{
   }, []);
 
   return (
-    <div className="border border-unfocused-border-color p-geist rounded-geist bg-background text-foreground flex flex-col gap-3">
-      <label htmlFor="clip-upload" className="text-sm font-medium">
-        Upload up to {MAX_CLIPS} video clips
-      </label>
-      <input
-        id="clip-upload"
-        type="file"
-        accept="video/*"
-        multiple
-        onChange={onFilesSelected}
-        className="text-sm"
-      />
-      {warning ? <p className="text-sm text-red-500">{warning}</p> : null}
+    <div className="flex flex-col gap-4 text-foreground">
+      <div className="flex flex-col gap-2">
+        <label htmlFor="clip-upload" className="text-sm font-medium">
+          Upload up to {MAX_CLIPS} video clips
+        </label>
+        <input
+          id="clip-upload"
+          type="file"
+          accept="video/*"
+          multiple
+          onChange={onFilesSelected}
+          className="text-sm"
+        />
+        {warning ? <p className="text-sm text-geist-error">{warning}</p> : null}
+      </div>
       {clips.length > 0 ? (
         <>
-          <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-subtitle">Playing order</label>
-              <select
-                value={playingOrderMode}
-                onChange={(e) =>
-                  handleModeChange(e.target.value as PlayingOrderMode)
-                }
-                className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-              >
-                <option value="manual">Manual (drag ⠿ below)</option>
-                <option value="ascending">Ascending rank (1 → N)</option>
-                <option value="descending">Descending rank (N → 1)</option>
-                <option value="shuffle">Shuffle</option>
-              </select>
+          <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-4">
+            <div className="field-row">
+              <label className="field-row-label">Playing order</label>
+              <div className="field-row-controls">
+                <select
+                  value={playingOrderMode}
+                  onChange={(e) =>
+                    handleModeChange(e.target.value as PlayingOrderMode)
+                  }
+                  className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+                >
+                  <option value="manual">Manual (drag ⠿ below)</option>
+                  <option value="ascending">Ascending rank (1 → N)</option>
+                  <option value="descending">Descending rank (N → 1)</option>
+                  <option value="shuffle">Shuffle</option>
+                </select>
+                {playingOrderMode === "shuffle" ? (
+                  <Button compact onClick={handleShuffleAgain}>
+                    Shuffle again
+                  </Button>
+                ) : null}
+              </div>
             </div>
-            {playingOrderMode === "shuffle" ? (
-              <Button onClick={handleShuffleAgain}>Shuffle again</Button>
-            ) : null}
+            <p className="text-xs text-subtitle sm:pl-[10.5rem]">
+              {playingOrderMode === "manual"
+                ? "Drag ⠿ below to set exactly which clip plays when."
+                : "Drag is disabled while an automatic playing order mode is selected — switch to Manual to drag."}
+            </p>
+
+            <div className="field-row">
+              <label className="field-row-label">
+                Apply animation to all clips
+              </label>
+              <div className="field-row-controls">
+                <select
+                  value={globalAnimationChoice}
+                  onChange={(e) =>
+                    setGlobalAnimationChoice(e.target.value as AnimationStyle)
+                  }
+                  className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+                >
+                  {ANIMATION_STYLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  compact
+                  onClick={() =>
+                    handleApplyAnimationToAll(globalAnimationChoice)
+                  }
+                >
+                  Apply to all
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-subtitle sm:pl-[10.5rem]">
+              Applies once, to every clip&apos;s title reveal — you can still
+              override any single clip&apos;s animation individually
+              afterward.
+            </p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-sm text-subtitle">
-              Apply animation to all clips
-            </label>
-            <select
-              value={globalAnimationChoice}
-              onChange={(e) =>
-                setGlobalAnimationChoice(e.target.value as AnimationStyle)
-              }
-              className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-            >
-              {ANIMATION_STYLE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <Button
-              onClick={() => handleApplyAnimationToAll(globalAnimationChoice)}
-            >
-              Apply to all
-            </Button>
-          </div>
-          <p className="text-sm text-subtitle">
-            Applies once, to every clip's title reveal — you can still
-            override any single clip's animation individually afterward.
-          </p>
-          <p className="text-sm text-subtitle">
-            {playingOrderMode === "manual"
-              ? "Drag ⠿ below to set exactly which clip plays when."
-              : "Drag is disabled while an automatic playing order mode is selected — switch to Manual to drag."}
-          </p>
+
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -849,7 +888,7 @@ export const ClipUploader: React.FC<{
               items={clips.map((clip) => clip.id)}
               strategy={verticalListSortingStrategy}
             >
-              <ul className="flex flex-col gap-2">
+              <ul className="flex flex-col gap-3 border-t border-unfocused-border-color pt-4">
                 {clips.map((clip) => (
                   <SortableClipRow
                     key={clip.id}

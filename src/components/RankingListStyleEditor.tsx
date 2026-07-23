@@ -133,210 +133,238 @@ export const RankingListStyleEditor: React.FC<{
 
   return (
     <InputContainer>
-      <label className="text-sm font-medium mb-2">
+      <label className="text-sm font-medium">
         Ranking list style (applies to every rank unless a clip overrides it)
       </label>
 
-      <p className="text-sm text-subtitle mb-2 mt-2">Size</p>
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <label className="text-sm text-subtitle w-36">
-          Whole list (numbers + titles)
-        </label>
-        <input
-          type="range"
-          min={MIN_SCALE}
-          max={MAX_SCALE}
-          step={SCALE_STEP}
-          value={scale}
-          onChange={(e) => setScale(Number(e.target.value))}
-          className="w-40"
-        />
-        <span className="text-sm text-subtitle w-12">
-          {Math.round(scale * 100)}%
-        </span>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <label className="text-sm text-subtitle w-36">Numbers only</label>
-        <input
-          type="range"
-          min={MIN_SCALE}
-          max={MAX_SCALE}
-          step={SCALE_STEP}
-          value={badgeScale}
-          onChange={(e) => setBadgeScale(Number(e.target.value))}
-          className="w-40"
-        />
-        <span className="text-sm text-subtitle w-12">
-          {Math.round(badgeScale * 100)}%
-        </span>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap mb-3">
-        <label className="text-sm text-subtitle w-36">Titles only</label>
-        <input
-          type="range"
-          min={MIN_SCALE}
-          max={MAX_SCALE}
-          step={SCALE_STEP}
-          value={titleScale}
-          onChange={(e) => setTitleScale(Number(e.target.value))}
-          className="w-40"
-        />
-        <span className="text-sm text-subtitle w-12">
-          {Math.round(titleScale * 100)}%
-        </span>
+      <div className="flex flex-col gap-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-subtitle">
+          Size
+        </p>
+        <div className="field-row">
+          <label className="field-row-label">Whole list (numbers + titles)</label>
+          <div className="field-row-controls">
+            <input
+              type="range"
+              min={MIN_SCALE}
+              max={MAX_SCALE}
+              step={SCALE_STEP}
+              value={scale}
+              onChange={(e) => setScale(Number(e.target.value))}
+              className="w-40"
+            />
+            <span className="text-sm text-subtitle font-mono-tabular w-12">
+              {Math.round(scale * 100)}%
+            </span>
+          </div>
+        </div>
+        <div className="field-row">
+          <label className="field-row-label">Numbers only</label>
+          <div className="field-row-controls">
+            <input
+              type="range"
+              min={MIN_SCALE}
+              max={MAX_SCALE}
+              step={SCALE_STEP}
+              value={badgeScale}
+              onChange={(e) => setBadgeScale(Number(e.target.value))}
+              className="w-40"
+            />
+            <span className="text-sm text-subtitle font-mono-tabular w-12">
+              {Math.round(badgeScale * 100)}%
+            </span>
+          </div>
+        </div>
+        <div className="field-row">
+          <label className="field-row-label">Titles only</label>
+          <div className="field-row-controls">
+            <input
+              type="range"
+              min={MIN_SCALE}
+              max={MAX_SCALE}
+              step={SCALE_STEP}
+              value={titleScale}
+              onChange={(e) => setTitleScale(Number(e.target.value))}
+              className="w-40"
+            />
+            <span className="text-sm text-subtitle font-mono-tabular w-12">
+              {Math.round(titleScale * 100)}%
+            </span>
+          </div>
+        </div>
       </div>
 
-      <p className="text-sm text-subtitle mb-2">Position</p>
-      <div className="flex items-center gap-2 flex-wrap mb-3">
-        <label className="text-sm text-subtitle w-36">Move up/down</label>
-        <button
-          type="button"
-          onClick={() => nudgeVerticalOffset(-VERTICAL_OFFSET_NUDGE)}
-          title="Nudge up"
-          className="px-2 py-1 text-xs rounded-geist border border-unfocused-border-color text-subtitle"
-        >
-          ▲
-        </button>
-        <input
-          type="range"
-          min={MIN_VERTICAL_OFFSET}
-          max={MAX_VERTICAL_OFFSET}
-          step={VERTICAL_OFFSET_STEP}
-          value={verticalOffset}
-          onChange={(e) => setVerticalOffset(Number(e.target.value))}
-          className="w-40"
-        />
-        <button
-          type="button"
-          onClick={() => nudgeVerticalOffset(VERTICAL_OFFSET_NUDGE)}
-          title="Nudge down"
-          className="px-2 py-1 text-xs rounded-geist border border-unfocused-border-color text-subtitle"
-        >
-          ▼
-        </button>
-        <span className="text-sm text-subtitle w-16">{verticalOffset}px</span>
+      <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-subtitle">
+          Position
+        </p>
+        <div className="field-row">
+          <label className="field-row-label">Move up/down</label>
+          <div className="field-row-controls">
+            <button
+              type="button"
+              onClick={() => nudgeVerticalOffset(-VERTICAL_OFFSET_NUDGE)}
+              title="Nudge up"
+              className="px-2 py-1 text-xs rounded-geist border border-unfocused-border-color text-subtitle hover:border-focused-border-color"
+            >
+              ▲
+            </button>
+            <input
+              type="range"
+              min={MIN_VERTICAL_OFFSET}
+              max={MAX_VERTICAL_OFFSET}
+              step={VERTICAL_OFFSET_STEP}
+              value={verticalOffset}
+              onChange={(e) => setVerticalOffset(Number(e.target.value))}
+              className="w-40"
+            />
+            <button
+              type="button"
+              onClick={() => nudgeVerticalOffset(VERTICAL_OFFSET_NUDGE)}
+              title="Nudge down"
+              className="px-2 py-1 text-xs rounded-geist border border-unfocused-border-color text-subtitle hover:border-focused-border-color"
+            >
+              ▼
+            </button>
+            <span className="text-sm text-subtitle font-mono-tabular w-16">
+              {verticalOffset}px
+            </span>
+          </div>
+        </div>
       </div>
 
-      <p className="text-sm text-subtitle mb-2">Numbers — default style</p>
-      <div className="flex items-center gap-2 flex-wrap mb-3">
-        <input
-          type="color"
-          value={badgeColor}
-          onChange={(e) => setBadgeColor(e.target.value)}
-          title="Number color"
-          className="w-8 h-8 border border-unfocused-border-color rounded-geist"
-        />
-        <select
-          value={badgeFontFamily}
-          onChange={(e) => setBadgeFontFamily(e.target.value)}
-          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-        >
-          {FONT_FAMILY_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={badgeFontWeight}
-          onChange={(e) => setBadgeFontWeight(Number(e.target.value))}
-          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-        >
-          {FONT_WEIGHT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={badgeBorderEnabled ? "bordered" : "none"}
-          onChange={(e) => setBadgeBorderEnabled(e.target.value === "bordered")}
-          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-        >
-          <option value="none">No border</option>
-          <option value="bordered">Bordered</option>
-        </select>
-        {badgeBorderEnabled ? (
-          <>
-            <input
-              type="color"
-              value={badgeBorderColor}
-              onChange={(e) => setBadgeBorderColor(e.target.value)}
-              title="Number border color"
-              className="w-8 h-8 border border-unfocused-border-color rounded-geist"
-            />
-            <input
-              type="number"
-              min={MIN_BORDER_WIDTH}
-              max={MAX_BORDER_WIDTH}
-              value={badgeBorderWidth}
-              onChange={(e) => setBadgeBorderWidth(Number(e.target.value))}
-              title="Number border thickness (px)"
-              className="w-14 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-            />
-          </>
-        ) : null}
+      <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-subtitle">
+          Numbers — default style
+        </p>
+        <div className="flex flex-wrap items-center gap-2 control-group">
+          <input
+            type="color"
+            value={badgeColor}
+            onChange={(e) => setBadgeColor(e.target.value)}
+            title="Number color"
+            className="w-8 h-8 border border-unfocused-border-color rounded-geist"
+          />
+          <select
+            value={badgeFontFamily}
+            onChange={(e) => setBadgeFontFamily(e.target.value)}
+            className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+          >
+            {FONT_FAMILY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={badgeFontWeight}
+            onChange={(e) => setBadgeFontWeight(Number(e.target.value))}
+            className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+          >
+            {FONT_WEIGHT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={badgeBorderEnabled ? "bordered" : "none"}
+            onChange={(e) =>
+              setBadgeBorderEnabled(e.target.value === "bordered")
+            }
+            className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+          >
+            <option value="none">No border</option>
+            <option value="bordered">Bordered</option>
+          </select>
+          {badgeBorderEnabled ? (
+            <>
+              <input
+                type="color"
+                value={badgeBorderColor}
+                onChange={(e) => setBadgeBorderColor(e.target.value)}
+                title="Number border color"
+                className="w-8 h-8 border border-unfocused-border-color rounded-geist"
+              />
+              <input
+                type="number"
+                min={MIN_BORDER_WIDTH}
+                max={MAX_BORDER_WIDTH}
+                value={badgeBorderWidth}
+                onChange={(e) => setBadgeBorderWidth(Number(e.target.value))}
+                title="Number border thickness (px)"
+                className="w-14 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+              />
+            </>
+          ) : null}
+        </div>
       </div>
 
-      <p className="text-sm text-subtitle mb-2">Titles — default style</p>
-      <div className="flex items-center gap-2 flex-wrap">
-        <input
-          type="color"
-          value={titleColor}
-          onChange={(e) => setTitleColor(e.target.value)}
-          title="Title color"
-          className="w-8 h-8 border border-unfocused-border-color rounded-geist"
-        />
-        <select
-          value={titleFontFamily}
-          onChange={(e) => setTitleFontFamily(e.target.value)}
-          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-        >
-          {FONT_FAMILY_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={titleFontWeight}
-          onChange={(e) => setTitleFontWeight(Number(e.target.value))}
-          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-        >
-          {FONT_WEIGHT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={titleBorderEnabled ? "bordered" : "none"}
-          onChange={(e) => setTitleBorderEnabled(e.target.value === "bordered")}
-          className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-        >
-          <option value="none">No border</option>
-          <option value="bordered">Bordered</option>
-        </select>
-        {titleBorderEnabled ? (
-          <>
-            <input
-              type="color"
-              value={titleBorderColor}
-              onChange={(e) => setTitleBorderColor(e.target.value)}
-              title="Title border color"
-              className="w-8 h-8 border border-unfocused-border-color rounded-geist"
-            />
-            <input
-              type="number"
-              min={MIN_BORDER_WIDTH}
-              max={MAX_BORDER_WIDTH}
-              value={titleBorderWidth}
-              onChange={(e) => setTitleBorderWidth(Number(e.target.value))}
-              title="Title border thickness (px)"
-              className="w-14 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-            />
-          </>
-        ) : null}
+      <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-subtitle">
+          Titles — default style
+        </p>
+        <div className="flex flex-wrap items-center gap-2 control-group">
+          <input
+            type="color"
+            value={titleColor}
+            onChange={(e) => setTitleColor(e.target.value)}
+            title="Title color"
+            className="w-8 h-8 border border-unfocused-border-color rounded-geist"
+          />
+          <select
+            value={titleFontFamily}
+            onChange={(e) => setTitleFontFamily(e.target.value)}
+            className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+          >
+            {FONT_FAMILY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={titleFontWeight}
+            onChange={(e) => setTitleFontWeight(Number(e.target.value))}
+            className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+          >
+            {FONT_WEIGHT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={titleBorderEnabled ? "bordered" : "none"}
+            onChange={(e) =>
+              setTitleBorderEnabled(e.target.value === "bordered")
+            }
+            className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+          >
+            <option value="none">No border</option>
+            <option value="bordered">Bordered</option>
+          </select>
+          {titleBorderEnabled ? (
+            <>
+              <input
+                type="color"
+                value={titleBorderColor}
+                onChange={(e) => setTitleBorderColor(e.target.value)}
+                title="Title border color"
+                className="w-8 h-8 border border-unfocused-border-color rounded-geist"
+              />
+              <input
+                type="number"
+                min={MIN_BORDER_WIDTH}
+                max={MAX_BORDER_WIDTH}
+                value={titleBorderWidth}
+                onChange={(e) => setTitleBorderWidth(Number(e.target.value))}
+                title="Title border thickness (px)"
+                className="w-14 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+              />
+            </>
+          ) : null}
+        </div>
       </div>
     </InputContainer>
   );

@@ -18,6 +18,7 @@ import { HeaderEditor } from "../components/HeaderEditor";
 import { RankingListStyleEditor } from "../components/RankingListStyleEditor";
 import { RenderControls } from "../components/RenderControls";
 import { Section } from "../components/Section";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { Tips } from "../components/Tips";
 import { getCompositionHeight } from "../remotion/MyComp/headerBackdrop";
 import { Main } from "../remotion/MyComp/Main";
@@ -92,10 +93,13 @@ const Home: NextPage = () => {
   return (
     <div className="min-h-screen bg-background font-geist">
       <header className="sticky top-0 z-20 border-b border-unfocused-border-color bg-background/85 backdrop-blur-md">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-4 py-4 lg:px-8">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-4 py-4 lg:px-8">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-accent text-xs font-bold text-accent-contrast">
-              1
+            <span
+              aria-hidden="true"
+              className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent text-sm font-bold text-accent-contrast"
+            >
+              #1
             </span>
             <div>
               <h1 className="text-base font-bold leading-none tracking-tight text-foreground">
@@ -106,20 +110,19 @@ const Home: NextPage = () => {
               </p>
             </div>
           </div>
-          <div className="hidden items-center gap-3 font-mono-tabular text-xs text-subtitle sm:flex">
-            <span>
-              {clipCount} clip{clipCount === 1 ? "" : "s"}
-            </span>
-            <span className="text-unfocused-border-color" aria-hidden="true">
-              /
-            </span>
-            <span>{totalSeconds}s</span>
-            <span className="text-unfocused-border-color" aria-hidden="true">
-              /
-            </span>
-            <span>
-              {VIDEO_WIDTH}×{compositionHeight}
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-1.5 sm:flex">
+              <span className="rounded-full border border-unfocused-border-color bg-panel px-2.5 py-1 font-mono-tabular text-[11px] text-subtitle">
+                {clipCount} clip{clipCount === 1 ? "" : "s"}
+              </span>
+              <span className="rounded-full border border-unfocused-border-color bg-panel px-2.5 py-1 font-mono-tabular text-[11px] text-subtitle">
+                {totalSeconds}s
+              </span>
+              <span className="rounded-full border border-unfocused-border-color bg-panel px-2.5 py-1 font-mono-tabular text-[11px] text-subtitle">
+                {VIDEO_WIDTH}×{compositionHeight}
+              </span>
+            </div>
+            <ThemeToggle />
           </div>
         </div>
       </header>
@@ -127,28 +130,32 @@ const Home: NextPage = () => {
       <main className="mx-auto max-w-[1400px] px-4 py-8 lg:px-8">
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start lg:gap-10">
           {/* Controls — scrolls normally, sits on the left on desktop */}
-          <div className="order-2 flex flex-col gap-8 lg:order-1">
-            <Section label="Header">
+          <div className="order-2 flex flex-col gap-5 lg:order-1">
+            <Section label="Header" description="A one-time title for the whole video">
               <HeaderEditor onHeaderChange={setHeader} />
             </Section>
-            <Section label="Ranking list style">
+            <Section
+              label="Ranking list style"
+              description="Shared look for every rank's number and title"
+              defaultOpen={false}
+            >
               <RankingListStyleEditor onStyleChange={setRankingListStyle} />
             </Section>
-            <Section label="Clips">
+            <Section label="Clips" description="Upload, order, and rank your footage">
               <ClipUploader
                 onClipsChange={setUploadedClips}
                 rankingListStyle={rankingListStyle}
               />
             </Section>
-            <Section label="Export">
+            <Section label="Export" description="Render the final video locally" defaultOpen={false}>
               <RenderControls inputProps={inputProps}></RenderControls>
             </Section>
           </div>
 
           {/* Preview — pinned on the right on desktop, on top on mobile
               (matching where it already sat before this layout change) */}
-          <div className="order-1 mb-8 lg:sticky lg:top-[92px] lg:order-2 lg:mb-0">
-            <div className="overflow-hidden rounded-geist border border-unfocused-border-color bg-panel shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_24px_60px_-24px_rgba(0,0,0,0.7)]">
+          <div className="order-1 mb-8 lg:sticky lg:top-[88px] lg:order-2 lg:mb-0">
+            <div className="overflow-hidden rounded-geist-lg border border-unfocused-border-color bg-panel shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_24px_60px_-24px_rgba(0,0,0,0.7)]">
               <Player
                 component={Main}
                 inputProps={inputProps}

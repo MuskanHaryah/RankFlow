@@ -123,160 +123,184 @@ export const HeaderEditor: React.FC<{
 
   return (
     <InputContainer>
-      <label htmlFor="header-text" className="text-sm font-medium mb-2">
-        Header (one-time title for the whole video)
-      </label>
-      <input
-        id="header-text"
-        type="text"
-        value={headerText}
-        onChange={(e) => handleTextChange(e.target.value)}
-        placeholder="Ranking Wholesome Story Time Vines"
-        className="leading-[1.7] block w-full rounded-geist bg-background p-geist-half text-foreground text-sm border border-unfocused-border-color transition-colors duration-150 ease-in-out focus:border-focused-border-color outline-none mb-3"
-      />
+      <div className="flex flex-col gap-2">
+        <label htmlFor="header-text" className="text-sm font-medium">
+          Header (one-time title for the whole video)
+        </label>
+        <input
+          id="header-text"
+          type="text"
+          value={headerText}
+          onChange={(e) => handleTextChange(e.target.value)}
+          placeholder="Ranking Wholesome Story Time Vines"
+          className="leading-[1.7] block w-full rounded-geist bg-background p-geist-half text-foreground text-sm border border-unfocused-border-color transition-colors duration-150 ease-in-out focus:border-focused-border-color outline-none"
+        />
+      </div>
 
       {words.length > 0 ? (
         <>
-          <p className="text-sm text-subtitle mb-2">
-            Click a word&apos;s swatch for its own color. Click ↵ to force a
-            line break right after that word.
-          </p>
-          <div className="flex flex-wrap gap-2 mb-3">
-            {words.map((w, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-1 border border-unfocused-border-color rounded-geist px-2 py-1 text-sm bg-background"
-              >
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="color"
-                    value={w.color}
-                    onChange={(e) => handleColorChange(i, e.target.value)}
-                    className="w-6 h-6 p-0 border-none bg-transparent cursor-pointer"
-                  />
-                  <span style={{ color: w.color }}>{w.word}</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handleToggleLineBreak(i)}
-                  title={
-                    w.lineBreakAfter
-                      ? "Line break after this word (click to remove)"
-                      : "Force a line break after this word"
-                  }
-                  className={`ml-1 px-1.5 rounded-geist text-xs leading-none ${
-                    w.lineBreakAfter
-                      ? "bg-foreground text-background"
-                      : "text-subtitle border border-unfocused-border-color"
-                  }`}
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-subtitle">
+              Click a word&apos;s swatch for its own color. Click ↵ to force a
+              line break right after that word.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {words.map((w, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-1 border border-unfocused-border-color rounded-geist px-2 py-1 text-sm bg-background transition-colors duration-150 ease-in-out hover:border-focused-border-color"
                 >
-                  ↵
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap mb-3">
-            <label className="text-sm text-subtitle">Font size</label>
-            <input
-              type="range"
-              min={MIN_FONT_SIZE}
-              max={MAX_FONT_SIZE}
-              value={fontSize}
-              onChange={(e) => setFontSize(Number(e.target.value))}
-              className="w-40"
-            />
-            <span className="text-sm text-subtitle w-10">{fontSize}px</span>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap mb-3">
-            <label className="text-sm text-subtitle">Header backdrop</label>
-            <select
-              value={backdropMode}
-              onChange={(e) =>
-                setBackdropMode(e.target.value as HeaderBackdropMode)
-              }
-              className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-            >
-              <option value="shade">Shade (bar over footage)</option>
-              <option value="extendCanvas">
-                Extended canvas (black bar above footage)
-              </option>
-            </select>
-          </div>
-
-          {backdropMode === "shade" ? (
-            <>
-              <div className="flex items-center gap-2 flex-wrap mb-3">
-                <label className="text-sm text-subtitle">
-                  Shade darkness
-                </label>
-                <input
-                  type="range"
-                  min={MIN_SHADE_OPACITY}
-                  max={MAX_SHADE_OPACITY}
-                  step={SHADE_OPACITY_STEP}
-                  value={shadeOpacity}
-                  onChange={(e) => setShadeOpacity(Number(e.target.value))}
-                  className="w-40"
-                />
-                <span className="text-sm text-subtitle w-10">
-                  {Math.round(shadeOpacity * 100)}%
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap mb-3">
-                <label className="text-sm text-subtitle">
-                  Extend shade downward
-                </label>
-                <input
-                  type="range"
-                  min={MIN_SHADE_EXTRA_HEIGHT}
-                  max={MAX_SHADE_EXTRA_HEIGHT}
-                  value={shadeExtraHeight}
-                  onChange={(e) =>
-                    setShadeExtraHeight(Number(e.target.value))
-                  }
-                  className="w-40"
-                />
-                <span className="text-sm text-subtitle w-14">
-                  {shadeExtraHeight}px
-                </span>
-              </div>
-            </>
-          ) : (
-            <div className="flex items-center gap-2 flex-wrap mb-3">
-              <label className="text-sm text-subtitle">
-                Extend canvas downward
-              </label>
-              <input
-                type="range"
-                min={MIN_EXTEND_CANVAS_EXTRA_HEIGHT}
-                max={MAX_EXTEND_CANVAS_EXTRA_HEIGHT}
-                value={extendCanvasExtraHeight}
-                onChange={(e) =>
-                  setExtendCanvasExtraHeight(Number(e.target.value))
-                }
-                className="w-40"
-              />
-              <span className="text-sm text-subtitle w-14">
-                {extendCanvasExtraHeight}px
-              </span>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="color"
+                      value={w.color}
+                      onChange={(e) => handleColorChange(i, e.target.value)}
+                      className="w-6 h-6 p-0 cursor-pointer"
+                    />
+                    <span className="word-swatch" style={{ color: w.color }}>
+                      {w.word}
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleLineBreak(i)}
+                    title={
+                      w.lineBreakAfter
+                        ? "Line break after this word (click to remove)"
+                        : "Force a line break after this word"
+                    }
+                    className={`ml-1 px-1.5 rounded-geist text-xs leading-none ${
+                      w.lineBreakAfter
+                        ? "bg-foreground text-background"
+                        : "text-subtitle border border-unfocused-border-color"
+                    }`}
+                  >
+                    ↵
+                  </button>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-sm text-subtitle">Show header</label>
-            <select
-              value={durationMode}
-              onChange={(e) =>
-                setDurationMode(e.target.value as HeaderDurationMode)
-              }
-              className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
-            >
-              <option value="persistent">Persistent (whole video)</option>
-              <option value="firstTwoSeconds">First 2 seconds only</option>
-            </select>
+          <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-4">
+            <div className="field-row">
+              <label className="field-row-label">Font size</label>
+              <div className="field-row-controls">
+                <input
+                  type="range"
+                  min={MIN_FONT_SIZE}
+                  max={MAX_FONT_SIZE}
+                  value={fontSize}
+                  onChange={(e) => setFontSize(Number(e.target.value))}
+                  className="w-40"
+                />
+                <span className="text-sm text-subtitle font-mono-tabular w-10">
+                  {fontSize}px
+                </span>
+              </div>
+            </div>
+
+            <div className="field-row">
+              <label className="field-row-label">Header backdrop</label>
+              <div className="field-row-controls">
+                <select
+                  value={backdropMode}
+                  onChange={(e) =>
+                    setBackdropMode(e.target.value as HeaderBackdropMode)
+                  }
+                  className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+                >
+                  <option value="shade">Shade (bar over footage)</option>
+                  <option value="extendCanvas">
+                    Extended canvas (black bar above footage)
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            {backdropMode === "shade" ? (
+              <>
+                <div className="field-row">
+                  <label className="field-row-label">Shade darkness</label>
+                  <div className="field-row-controls">
+                    <input
+                      type="range"
+                      min={MIN_SHADE_OPACITY}
+                      max={MAX_SHADE_OPACITY}
+                      step={SHADE_OPACITY_STEP}
+                      value={shadeOpacity}
+                      onChange={(e) =>
+                        setShadeOpacity(Number(e.target.value))
+                      }
+                      className="w-40"
+                    />
+                    <span className="text-sm text-subtitle font-mono-tabular w-10">
+                      {Math.round(shadeOpacity * 100)}%
+                    </span>
+                  </div>
+                </div>
+
+                <div className="field-row">
+                  <label className="field-row-label">
+                    Extend shade downward
+                  </label>
+                  <div className="field-row-controls">
+                    <input
+                      type="range"
+                      min={MIN_SHADE_EXTRA_HEIGHT}
+                      max={MAX_SHADE_EXTRA_HEIGHT}
+                      value={shadeExtraHeight}
+                      onChange={(e) =>
+                        setShadeExtraHeight(Number(e.target.value))
+                      }
+                      className="w-40"
+                    />
+                    <span className="text-sm text-subtitle font-mono-tabular w-14">
+                      {shadeExtraHeight}px
+                    </span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="field-row">
+                <label className="field-row-label">
+                  Extend canvas downward
+                </label>
+                <div className="field-row-controls">
+                  <input
+                    type="range"
+                    min={MIN_EXTEND_CANVAS_EXTRA_HEIGHT}
+                    max={MAX_EXTEND_CANVAS_EXTRA_HEIGHT}
+                    value={extendCanvasExtraHeight}
+                    onChange={(e) =>
+                      setExtendCanvasExtraHeight(Number(e.target.value))
+                    }
+                    className="w-40"
+                  />
+                  <span className="text-sm text-subtitle font-mono-tabular w-14">
+                    {extendCanvasExtraHeight}px
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="field-row">
+              <label className="field-row-label">Show header</label>
+              <div className="field-row-controls">
+                <select
+                  value={durationMode}
+                  onChange={(e) =>
+                    setDurationMode(e.target.value as HeaderDurationMode)
+                  }
+                  className="text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+                >
+                  <option value="persistent">Persistent (whole video)</option>
+                  <option value="firstTwoSeconds">
+                    First 2 seconds only
+                  </option>
+                </select>
+              </div>
+            </div>
           </div>
         </>
       ) : null}

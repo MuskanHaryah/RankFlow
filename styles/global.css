@@ -28,6 +28,7 @@
   --disabled-text-color: #565a61;
 
   --geist-border-radius: 8px;
+  --geist-border-radius-lg: 14px;
   --geist-quarter-pad: 6px;
   --geist-half-pad: 12px;
   --geist-pad: 24px;
@@ -35,22 +36,43 @@
   --geist-font-mono: var(--font-mono, "JetBrains Mono");
 
   --geist-error: #e5484d;
+  --geist-success: #4ade80;
 
   --scrollbar-track: #0f1114;
 }
 
-/* This app is designed dark-first — the ranking/countdown format it
-   produces is watched on dark phone UIs, and the editor mirrors that. */
-@media (prefers-color-scheme: light) {
-  :root {
-    --background: #0a0b0d;
-    --panel: #131519;
-    --panel-raised: #1a1d22;
-    --foreground: #edeef0;
-    --subtitle: #8b909a;
-    --unfocused-border-color: #23262c;
-    --focused-border-color: #3a3f47;
-  }
+/*
+ * Light theme
+ * -----------
+ * Same graphite/brass identity, inverted onto a warm paper surface rather
+ * than a generic white — kept the accent's hue but deepened it slightly
+ * so brass-on-paper still hits the same contrast the dark theme gets from
+ * brass-on-ink. Switched via a `data-theme` attribute on <html> (set by
+ * the theme toggle and persisted to localStorage) rather than only
+ * `prefers-color-scheme`, so the choice is explicit and remembered.
+ */
+:root[data-theme="light"] {
+  --background: #f6f4ef;
+  --panel: #ffffff;
+  --panel-raised: #f0ece3;
+  --foreground: #1c1b18;
+  --subtitle: #6f6a60;
+
+  --unfocused-border-color: #e3ddd0;
+  --focused-border-color: #c8bfab;
+
+  --accent: #b8853a;
+  --accent-strong: #9c6f2c;
+  --accent-soft: rgba(184, 133, 58, 0.14);
+  --accent-contrast: #fffaf0;
+
+  --button-disabled-color: #ece7db;
+  --disabled-text-color: #a19a8b;
+
+  --geist-error: #c8342f;
+  --geist-success: #1f9d55;
+
+  --scrollbar-track: #ece7dc;
 }
 
 @theme {
@@ -63,6 +85,7 @@
   --color-button-disabled-color: var(--button-disabled-color);
   --color-disabled-text-color: var(--disabled-text-color);
   --color-geist-error: var(--geist-error);
+  --color-geist-success: var(--geist-success);
   --color-subtitle: var(--subtitle);
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
@@ -75,6 +98,7 @@
   --spacing-geist-half: var(--geist-half-pad);
   --spacing-geist-quarter: var(--geist-quarter-pad);
   --radius-geist: var(--geist-border-radius);
+  --radius-geist-lg: var(--geist-border-radius-lg);
   --font-geist: var(--geist-font);
   --font-geist-mono: var(--geist-font-mono);
   --animate-spinner: spinner 1.2s linear infinite;
@@ -89,8 +113,44 @@
   }
 }
 
-body {
+:root {
   color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+/* Safety net: every text-bearing element gets a sane default color, so a
+   label/legend/heading that forgets an explicit text-* class still reads
+   correctly instead of silently falling back to the browser's black. */
+label,
+legend,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--foreground);
+}
+
+::placeholder {
+  color: var(--subtitle);
+  opacity: 1;
+}
+
+/* Firefox renders <option> against its own default (usually white)
+   background — force it to match the app's dark surfaces so the menu
+   doesn't flash light/unstyled for a moment when opened. */
+option {
+  background: var(--panel-raised);
+  color: var(--foreground);
 }
 
 /* Thin, dark scrollbars — small detail, but raw OS scrollbars are one of
@@ -126,6 +186,14 @@ body {
  * as "unfinished." These rules restyle the controls themselves, globally,
  * so every panel picks it up without any changes to their own code.
  */
+
+select,
+input[type="text"],
+input[type="search"],
+input[type="number"] {
+  height: 2.25rem;
+  box-sizing: border-box;
+}
 
 select {
   appearance: none;
@@ -189,24 +257,34 @@ input[type="range"]::-moz-range-track {
   background: var(--unfocused-border-color);
 }
 
+/* A color swatch's own value can be anything — including near-white in
+   light theme or near-black in dark theme — so unlike other controls it
+   always needs its own border to stay legible against whatever panel
+   it's sitting on. */
 input[type="color"] {
   appearance: none;
   padding: 0;
   cursor: pointer;
   background: none;
+  border: 1px solid var(--unfocused-border-color);
+  border-radius: 6px;
 }
 input[type="color"]::-webkit-color-swatch-wrapper {
-  padding: 3px;
+  padding: 2px;
 }
 input[type="color"]::-webkit-color-swatch {
   border: none;
-  border-radius: 5px;
+  border-radius: 4px;
 }
 input[type="color"]::-moz-color-swatch {
   border: none;
-  border-radius: 5px;
+  border-radius: 4px;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+}
 input[type="file"] {
   color: var(--subtitle);
   font-size: 0.8125rem;
@@ -238,4 +316,264 @@ input[type="file"]::file-selector-button:hover {
   font-family: var(--geist-font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+}
+
+/*
+ * Field rows
+ * ----------
+ * The single repeating unit every settings panel is built from: a short
+ * label (with an optional one-line hint) on the left, its control(s) on
+ * the right. On narrow widths it stacks instead of wrapping mid-control,
+ * which is what previously made these panels feel like a pile of loose
+ * inputs rather than a form.
+ */
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+@media (min-width: 640px) {
+  .field-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+  }
+  .field-row > .field-row-label {
+    width: 9.5rem;
+    flex: none;
+    padding-top: 0;
+  }
+}
+.field-row-label {
+  font-size: 0.8125rem;
+  color: var(--subtitle);
+  line-height: 1.4;
+}
+.field-row-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/*
+ * Collapsible sections
+ * ---------------------
+ * <details>/<summary> gives every panel a free, keyboard-accessible
+ * collapse/expand with no extra JS state — the single biggest lever for
+ * making a long settings page feel organized instead of endless.
+ */
+.section-details {
+  border: 1px solid var(--unfocused-border-color);
+  border-radius: var(--radius-geist-lg);
+  background: var(--panel);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.15s ease-in-out, background-color 0.2s ease-in-out,
+    box-shadow 0.15s ease-in-out;
+}
+.section-details[open] {
+  border-color: var(--focused-border-color);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+.section-summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.875rem 1.125rem;
+  transition: background 0.15s ease-in-out;
+}
+.section-summary::-webkit-details-marker {
+  display: none;
+}
+.section-summary:hover {
+  background: var(--panel-raised);
+}
+.section-summary:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-soft);
+}
+.section-chevron {
+  transition: transform 0.18s ease-in-out;
+  color: var(--subtitle);
+  flex: none;
+}
+.section-details[open] .section-chevron {
+  transform: rotate(90deg);
+}
+.section-body {
+  padding: 0 1.125rem 1.125rem;
+  border-top: 1px solid var(--unfocused-border-color);
+  padding-top: 1.125rem;
+}
+
+/*
+ * Word color preview
+ * -------------------
+ * The word chips in the Header panel preview text that's meant to sit on
+ * top of dark video footage, so its default color is white. That reads
+ * fine against the video, but rendered directly on the app's own panel it
+ * went invisible in light theme (white text is not a UI text color here,
+ * it's a video-overlay color). Fixed to a constant dark swatch — not tied
+ * to the app's theme variables — so the preview stays legible no matter
+ * which theme the editor is in or which color the word is set to.
+ */
+.word-swatch {
+  background: #14151a;
+  border-radius: 5px;
+  padding: 0.1rem 0.4rem;
+}
+
+/*
+ * Control groups
+ * --------------
+ * A handful of panels (default number/title style, per-clip rank/badge,
+ * per-clip title/reveal) pack several small controls onto one row. A
+ * shared tinted, bordered wrapper reads those as one deliberate cluster
+ * instead of a loose handful of inputs that happen to be near each other.
+ */
+.control-group {
+  background: var(--panel-raised);
+  border: 1px solid var(--unfocused-border-color);
+  border-radius: var(--radius-geist);
+  padding: 0.625rem;
+}
+
+/*
+ * Theme toggle
+ * ------------
+ * A single switch, not two separate buttons — the sliding thumb itself
+ * carries the moon↔sun crossfade, and a few twinkling dots in the track
+ * only show up on the dark side. Purely CSS-driven off the `data-theme`
+ * attribute on <html>, so the component only needs to flip that attribute.
+ */
+.theme-toggle {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 2px;
+  margin: 0;
+  cursor: pointer;
+  border-radius: 999px;
+  flex: none;
+}
+.theme-toggle:focus-visible {
+  outline: none;
+}
+.theme-toggle:focus-visible .theme-toggle-track {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.theme-toggle-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 52px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--panel-raised);
+  border: 1px solid var(--unfocused-border-color);
+  overflow: hidden;
+  transition: border-color 0.2s ease-in-out, background-color 0.2s ease-in-out;
+}
+.theme-toggle:hover .theme-toggle-track {
+  border-color: var(--focused-border-color);
+}
+
+.theme-toggle-stars {
+  position: absolute;
+  inset: 0;
+  opacity: 1;
+  transition: opacity 0.25s ease-in-out;
+}
+:root[data-theme="light"] .theme-toggle-stars {
+  opacity: 0;
+}
+.theme-toggle-stars span {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--subtitle);
+  animation: theme-toggle-twinkle 2.4s ease-in-out infinite;
+}
+.theme-toggle-stars span:nth-child(1) {
+  top: 6px;
+  left: 8px;
+}
+.theme-toggle-stars span:nth-child(2) {
+  top: 17px;
+  left: 15px;
+  width: 1.5px;
+  height: 1.5px;
+  animation-delay: 0.7s;
+}
+.theme-toggle-stars span:nth-child(3) {
+  top: 9px;
+  left: 21px;
+  width: 1.5px;
+  height: 1.5px;
+  animation-delay: 1.3s;
+}
+@keyframes theme-toggle-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+.theme-toggle-thumb {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(0);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 0.2s ease-in-out;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+:root[data-theme="light"] .theme-toggle-thumb {
+  transform: translateX(24px);
+}
+.theme-toggle:hover .theme-toggle-thumb {
+  filter: brightness(1.08);
+}
+
+.theme-toggle-icon {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  color: var(--accent-contrast);
+  transition: opacity 0.2s ease-in-out, transform 0.35s ease-in-out;
+}
+.theme-toggle-icon.is-moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+.theme-toggle-icon.is-sun {
+  opacity: 0;
+  transform: rotate(-75deg) scale(0.4);
+}
+:root[data-theme="light"] .theme-toggle-icon.is-moon {
+  opacity: 0;
+  transform: rotate(75deg) scale(0.4);
+}
+:root[data-theme="light"] .theme-toggle-icon.is-sun {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
 }
