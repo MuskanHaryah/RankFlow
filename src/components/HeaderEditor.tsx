@@ -34,6 +34,14 @@ const DEFAULT_EXTEND_CANVAS_EXTRA_HEIGHT = 0;
 const MIN_EXTEND_CANVAS_EXTRA_HEIGHT = 0;
 const MAX_EXTEND_CANVAS_EXTRA_HEIGHT = 400;
 
+// Same "nudge" pattern as RankingListStyleEditor's own verticalOffset —
+// a small step size makes dragging feel like nudging rather than jumping.
+const DEFAULT_HEADER_VERTICAL_OFFSET = 0;
+const MIN_HEADER_VERTICAL_OFFSET = -400;
+const MAX_HEADER_VERTICAL_OFFSET = 400;
+const HEADER_VERTICAL_OFFSET_STEP = 5;
+const HEADER_VERTICAL_OFFSET_NUDGE = 10;
+
 /**
  * A one-time title for the whole video (distinct from the per-clip ranking
  * list). Typing a sentence splits it into individually-colored words —
@@ -69,6 +77,9 @@ export const HeaderEditor: React.FC<{
   const [extendCanvasExtraHeight, setExtendCanvasExtraHeight] = useState(
     DEFAULT_EXTEND_CANVAS_EXTRA_HEIGHT,
   );
+  const [verticalOffset, setVerticalOffset] = useState(
+    DEFAULT_HEADER_VERTICAL_OFFSET,
+  );
 
   // Same pattern as ClipUploader's onClipsChange: notify the parent via an
   // effect keyed on the actual state, not inline on every keystroke handler.
@@ -83,6 +94,7 @@ export const HeaderEditor: React.FC<{
       headerBackdropShadeOpacity: shadeOpacity,
       headerBackdropShadeExtraHeight: shadeExtraHeight,
       headerBackdropExtendCanvasExtraHeight: extendCanvasExtraHeight,
+      verticalOffset,
     });
   }, [
     words,
@@ -92,6 +104,7 @@ export const HeaderEditor: React.FC<{
     shadeOpacity,
     shadeExtraHeight,
     extendCanvasExtraHeight,
+    verticalOffset,
     onHeaderChange,
   ]);
 
@@ -117,6 +130,15 @@ export const HeaderEditor: React.FC<{
     setWords((prevWords) =>
       prevWords.map((w, i) =>
         i === index ? { ...w, lineBreakAfter: !w.lineBreakAfter } : w,
+      ),
+    );
+  }, []);
+
+  const nudgeVerticalOffset = useCallback((delta: number) => {
+    setVerticalOffset((prev) =>
+      Math.max(
+        MIN_HEADER_VERTICAL_OFFSET,
+        Math.min(MAX_HEADER_VERTICAL_OFFSET, prev + delta),
       ),
     );
   }, []);
@@ -196,6 +218,44 @@ export const HeaderEditor: React.FC<{
                 />
                 <span className="text-sm text-subtitle font-mono-tabular w-10">
                   {fontSize}px
+                </span>
+              </div>
+            </div>
+
+            <div className="field-row">
+              <label className="field-row-label">Move up/down</label>
+              <div className="field-row-controls">
+                <button
+                  type="button"
+                  onClick={() =>
+                    nudgeVerticalOffset(-HEADER_VERTICAL_OFFSET_NUDGE)
+                  }
+                  title="Nudge up"
+                  className="px-2 py-1 text-xs rounded-geist border border-unfocused-border-color text-subtitle hover:border-focused-border-color"
+                >
+                  ▲
+                </button>
+                <input
+                  type="range"
+                  min={MIN_HEADER_VERTICAL_OFFSET}
+                  max={MAX_HEADER_VERTICAL_OFFSET}
+                  step={HEADER_VERTICAL_OFFSET_STEP}
+                  value={verticalOffset}
+                  onChange={(e) => setVerticalOffset(Number(e.target.value))}
+                  className="w-40"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    nudgeVerticalOffset(HEADER_VERTICAL_OFFSET_NUDGE)
+                  }
+                  title="Nudge down"
+                  className="px-2 py-1 text-xs rounded-geist border border-unfocused-border-color text-subtitle hover:border-focused-border-color"
+                >
+                  ▼
+                </button>
+                <span className="text-sm text-subtitle font-mono-tabular w-16">
+                  {verticalOffset}px
                 </span>
               </div>
             </div>

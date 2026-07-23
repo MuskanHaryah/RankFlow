@@ -30,8 +30,6 @@ type RankingListStyleProps = z.infer<typeof CompositionProps>["rankingListStyle"
 const BASE_BADGE_FONT_SIZE = 48;
 const BASE_BADGE_MIN_WIDTH = 60;
 const BASE_TITLE_FONT_SIZE = 42;
-const BASE_ROW_GAP = 18;
-const BASE_ITEM_GAP = 16;
 
 type ResolvedRankElementStyle = {
   color: string;
@@ -335,8 +333,8 @@ const RankingList: React.FC<{
   const badgeFontSize = BASE_BADGE_FONT_SIZE * listStyle.scale * listStyle.badgeScale;
   const badgeMinWidth = BASE_BADGE_MIN_WIDTH * listStyle.scale * listStyle.badgeScale;
   const titleFontSize = BASE_TITLE_FONT_SIZE * listStyle.scale * listStyle.titleScale;
-  const rowGap = BASE_ROW_GAP * listStyle.scale;
-  const itemGap = BASE_ITEM_GAP * listStyle.scale;
+  const rowGap = listStyle.rowGap * listStyle.scale;
+  const itemGap = listStyle.itemGap * listStyle.scale;
 
   return (
     <AbsoluteFill
@@ -392,9 +390,15 @@ const RankingList: React.FC<{
                     // itself instead, the same principle the original
                     // rgba-alpha approach used, just generalized to work
                     // with any base color the person picks, not only white.
+                    // Finished clips use a light-white tone rather than a
+                    // heavily dimmed gray — a low-opacity mix (previously
+                    // 35%) reads as an obviously "grayed out" state that
+                    // draws its own attention; staying close to full
+                    // brightness keeps focus on the currently-playing item
+                    // without making already-played titles look muted.
                     color: isCurrent
                       ? titleStyle.color
-                      : `color-mix(in srgb, ${titleStyle.color} 35%, transparent)`,
+                      : `color-mix(in srgb, ${titleStyle.color} 85%, transparent)`,
                     textShadow: "0 2px 6px rgba(0,0,0,0.7)",
                     ...textStrokeStyle(titleStyle),
                   }}
@@ -488,6 +492,7 @@ const Header: React.FC<{ header: HeaderProps }> = ({ header }) => {
         alignItems: "center",
         padding: `${HEADER_TOP_PADDING}px ${HEADER_HORIZONTAL_PADDING}px 0`,
         pointerEvents: "none",
+        transform: `translateY(${header.verticalOffset}px)`,
       }}
     >
       <div

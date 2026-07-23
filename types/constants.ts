@@ -125,6 +125,14 @@ export const HeaderSchema = z.object({
   // slider above but for the grown-canvas bar instead. Defaults to 0
   // (pure auto height).
   headerBackdropExtendCanvasExtraHeight: z.number(),
+  // Moves the header up/down from its default top-anchored position —
+  // same "nudge" pattern as the ranking list's verticalOffset below.
+  // Purely a visual transform applied after layout: the backdrop (shade
+  // bar / extendCanvas bar) height is still measured from the header's
+  // actual text/font size, not from this offset, so pushing the header
+  // far enough can move it outside its own backdrop — same tradeoff the
+  // ranking list's own verticalOffset already has.
+  verticalOffset: z.number(),
 });
 
 // Phase 9 — project-level ranking-list visual defaults. Every clip uses
@@ -146,6 +154,16 @@ export const RankingListStyleSchema = z.object({
   // than a coarse slider) is what makes this feel like "nudging" rather
   // than jumping to a new spot.
   verticalOffset: z.number(),
+  // Space between each rank row (badge + title together, as one block) and
+  // the next rank's row — a flexbox `gap`, so it only ever adds space
+  // *between* rows, never above the first rank or below the last one.
+  // Independent from `scale`; still multiplied by it at render time so
+  // "resize the whole list" continues to move spacing proportionally too.
+  rowGap: z.number(),
+  // Space between a single rank's badge (number/emoji) and its title text,
+  // within one row. Independent from `scale` for the same reason as
+  // rowGap above.
+  itemGap: z.number(),
 
   badgeColor: z.string(),
   badgeFontFamily: z.string(),
@@ -172,6 +190,10 @@ export const defaultRankingListStyle: z.infer<typeof RankingListStyleSchema> =
     badgeScale: 1,
     titleScale: 1,
     verticalOffset: 0,
+    // Matches the values Main.tsx used to hardcode as BASE_ROW_GAP /
+    // BASE_ITEM_GAP, now exposed as real defaults instead of constants.
+    rowGap: 18,
+    itemGap: 16,
 
     badgeColor: "#ffffff",
     badgeFontFamily: "inherit",
@@ -207,6 +229,7 @@ export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
     headerBackdropShadeOpacity: 0.85,
     headerBackdropShadeExtraHeight: 0,
     headerBackdropExtendCanvasExtraHeight: 0,
+    verticalOffset: 0,
   },
   rankingListStyle: defaultRankingListStyle,
 };

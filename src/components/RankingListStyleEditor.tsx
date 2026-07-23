@@ -19,6 +19,14 @@ const MAX_VERTICAL_OFFSET = 400;
 const VERTICAL_OFFSET_STEP = 5;
 const VERTICAL_OFFSET_NUDGE = 10;
 
+const MIN_ROW_GAP = 0;
+const MAX_ROW_GAP = 160;
+const ROW_GAP_STEP = 2;
+
+const MIN_ITEM_GAP = 0;
+const MAX_ITEM_GAP = 120;
+const ITEM_GAP_STEP = 2;
+
 const MIN_BORDER_WIDTH = 1;
 const MAX_BORDER_WIDTH = 20;
 
@@ -42,6 +50,8 @@ export const RankingListStyleEditor: React.FC<{
   const [verticalOffset, setVerticalOffset] = useState(
     defaultRankingListStyle.verticalOffset,
   );
+  const [rowGap, setRowGap] = useState(defaultRankingListStyle.rowGap);
+  const [itemGap, setItemGap] = useState(defaultRankingListStyle.itemGap);
 
   const [badgeColor, setBadgeColor] = useState(
     defaultRankingListStyle.badgeColor,
@@ -89,6 +99,8 @@ export const RankingListStyleEditor: React.FC<{
       badgeScale,
       titleScale,
       verticalOffset,
+      rowGap,
+      itemGap,
       badgeColor,
       badgeFontFamily,
       badgeFontWeight,
@@ -107,6 +119,8 @@ export const RankingListStyleEditor: React.FC<{
     badgeScale,
     titleScale,
     verticalOffset,
+    rowGap,
+    itemGap,
     badgeColor,
     badgeFontFamily,
     badgeFontWeight,
@@ -189,6 +203,46 @@ export const RankingListStyleEditor: React.FC<{
             />
             <span className="text-sm text-subtitle font-mono-tabular w-12">
               {Math.round(titleScale * 100)}%
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-subtitle">
+          Spacing
+        </p>
+        <div className="field-row">
+          <label className="field-row-label">Space between ranks</label>
+          <div className="field-row-controls">
+            <input
+              type="range"
+              min={MIN_ROW_GAP}
+              max={MAX_ROW_GAP}
+              step={ROW_GAP_STEP}
+              value={rowGap}
+              onChange={(e) => setRowGap(Number(e.target.value))}
+              className="w-40"
+            />
+            <span className="text-sm text-subtitle font-mono-tabular w-14">
+              {rowGap}px
+            </span>
+          </div>
+        </div>
+        <div className="field-row">
+          <label className="field-row-label">Space between number &amp; title</label>
+          <div className="field-row-controls">
+            <input
+              type="range"
+              min={MIN_ITEM_GAP}
+              max={MAX_ITEM_GAP}
+              step={ITEM_GAP_STEP}
+              value={itemGap}
+              onChange={(e) => setItemGap(Number(e.target.value))}
+              className="w-40"
+            />
+            <span className="text-sm text-subtitle font-mono-tabular w-14">
+              {itemGap}px
             </span>
           </div>
         </div>
