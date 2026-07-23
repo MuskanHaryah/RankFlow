@@ -8,7 +8,11 @@ import {
   useVideoConfig,
 } from "remotion";
 import { z } from "zod";
-import { CompositionProps, HEADER_INTRO_SECONDS } from "../../../types/constants";
+import {
+  CompositionProps,
+  HEADER_INTRO_SECONDS,
+  isClipVertical,
+} from "../../../types/constants";
 import {
   HEADER_HORIZONTAL_PADDING,
   HEADER_LINE_HEIGHT,
@@ -291,6 +295,65 @@ const AnimatedTitle: React.FC<{
   }
 
   return <span style={{ ...textStyle, ...motionStyle }}>{text}</span>;
+};
+
+/**
+ * Phase 11 — a single clip's own video track.
+ *
+ * `trimBefore`/`trimAfter` (in frames, into the *original* source file —
+ * independent of this Sequence's own timeline) play only the trimmed
+ * range the person selected in the trim scrubber, rather than the whole
+ * source clip.
+ *
+ * If the source isn't close to the vertical 9:16 canvas, it's padded
+ * automatically: a blurred, scaled-up copy of the same clip fills the
+ * frame as a background, with a normal, un-cropped, un-stretched copy
+ * centered on top. This is deliberately the simple, safe fallback rather
+ * than attempting smart subject-tracking crop — see Phase 11's own notes
+ * on why. The background copy is muted so the clip's audio only plays
+ * once, from the foreground copy.
+ */
+const ClipVideo: React.FC<{ clip: Clip }> = ({ clip }) => {
+  const vertical = isClipVertical(clip.sourceWidth, clip.sourceHeight);
+
+  if (vertical) {
+    return (
+      <Video
+        src={clip.src}
+        trimBefore={clip.trimStartFrame}
+        trimAfter={clip.trimEndFrame}
+        objectFit="cover"
+        style={{ width: "100%", height: "100%" }}
+      />
+    );
+  }
+
+  return (
+    <AbsoluteFill>
+      <Video
+        src={clip.src}
+        trimBefore={clip.trimStartFrame}
+        trimAfter={clip.trimEndFrame}
+        muted
+        objectFit="cover"
+        style={{
+          width: "100%",
+          height: "100%",
+          filter: "blur(60px) brightness(0.55)",
+          transform: "scale(1.15)",
+        }}
+      />
+      <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
+        <Video
+          src={clip.src}
+          trimBefore={clip.trimStartFrame}
+          trimAfter={clip.trimEndFrame}
+          objectFit="contain"
+          style={{ width: "100%", height: "100%" }}
+        />
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
 };
 
 /**
@@ -587,7 +650,7 @@ export const Main = ({
             from={clip.from}
             durationInFrames={clip.to - clip.from}
           >
-            <Video src={clip.src} />
+            <ClipVideo clip={clip} />
             {clip.stickers.map((sticker) => {
               // A nested <Sequence>'s `from` is relative to its parent
               // Sequence's own local frame 0 — i.e. exactly the "0 = this

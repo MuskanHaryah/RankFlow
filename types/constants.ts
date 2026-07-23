@@ -94,6 +94,30 @@ export const ClipSchema = z.object({
   // Separate from badgeEmoji (Phase 4's rank badge) — these are freely
   // positioned decorations, not tied to the ranking list at all.
   stickers: z.array(StickerSchema),
+  // Phase 11 — trim points, in frames into this clip's *original,
+  // untrimmed* source file (not the overall video timeline — that's what
+  // computeClipRanges' from/to are for). trimStartFrame defaults to 0 and
+  // trimEndFrame defaults to sourceDurationInFrames, i.e. "no trim" until
+  // the person drags a handle. `durationInFrames` above is kept in sync
+  // by the editor as trimEndFrame - trimStartFrame, so every existing
+  // reader of durationInFrames (calculateMetadata, computeClipRanges, the
+  // page's own totals) keeps working completely unchanged — trimming
+  // just changes what that number *is*, not who reads it.
+  trimStartFrame: z.number(),
+  trimEndFrame: z.number(),
+  // Phase 11 — the clip's full, untrimmed length in frames, detected once
+  // on upload. This is what the trim scrubber's track spans and what
+  // trimEndFrame is clamped against — distinct from durationInFrames (the
+  // currently-playing, possibly-trimmed length).
+  sourceDurationInFrames: z.number(),
+  // Phase 11 — native pixel resolution, detected once on upload (read
+  // straight off the browser's <video> element, no ffmpeg probe needed).
+  // Used purely as a rendering decision: footage that isn't close to
+  // vertical gets a blurred-and-scaled copy of itself as a background
+  // (see isClipVertical below and Main.tsx's ClipVideo) rather than being
+  // stretched or cropped. The source file itself is never modified.
+  sourceWidth: z.number(),
+  sourceHeight: z.number(),
 });
 
 // A one-time title for the whole video (distinct from the per-clip ranking
@@ -279,6 +303,29 @@ export const STICKER_DEFAULT_DURATION_SECONDS = 1.5;
 export const VIDEO_WIDTH = 1080;
 export const VIDEO_HEIGHT = 1920;
 export const VIDEO_FPS = 30;
+
+// Phase 11 — how far off exactly-9:16 a clip's aspect ratio is allowed to
+// be before Main.tsx treats it as "not vertical" and switches on the
+// blurred-pad background. A little slack — rather than requiring an exact
+// pixel match — is what lets ordinary vertical phone footage (which is
+// almost never *exactly* 1080x1920) through without unnecessary padding.
+// Mirrored (deliberately, not imported — see ClipUploader.tsx's own FPS
+// constant for the same reasoning) as a local constant in
+// VerticalityCheck.tsx, which needs the same threshold for the upload UI's
+// own vertical/padded messaging without pulling in the render pipeline.
+export const VERTICAL_ASPECT_RATIO = VIDEO_WIDTH / VIDEO_HEIGHT; // 0.5625, i.e. 9:16
+export const VERTICAL_ASPECT_RATIO_TOLERANCE = 0.03;
+
+export const isClipVertical = (width: number, height: number): boolean => {
+  if (width <= 0 || height <= 0) {
+    // Resolution not known yet — don't pad on a guess.
+    return true;
+  }
+  const ratio = width / height;
+  return (
+    Math.abs(ratio - VERTICAL_ASPECT_RATIO) <= VERTICAL_ASPECT_RATIO_TOLERANCE
+  );
+};
 
 // Fallback only — used before any clips exist. Real total duration is
 // calculated from the clips array once they're uploaded (see Root.tsx).

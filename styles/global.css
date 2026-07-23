@@ -444,6 +444,57 @@ input[type="file"]::file-selector-button:hover {
 }
 
 /*
+ * Clip trimmer
+ * ------------
+ * No thumbnail filmstrip — the diagonal-stripe track stands in for one,
+ * giving the scrubber a deliberate "film" texture without needing a
+ * server-side thumbnail-extraction step per clip. The highlighted fill is
+ * the range that will actually play; dragging either handle narrows or
+ * widens it directly.
+ */
+.clip-trim-track {
+  position: relative;
+  height: 28px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--unfocused-border-color),
+    var(--unfocused-border-color) 6px,
+    var(--panel-raised) 6px,
+    var(--panel-raised) 12px
+  );
+  border: 1px solid var(--unfocused-border-color);
+}
+.clip-trim-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent-soft);
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  pointer-events: none;
+}
+.clip-trim-handle {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 34px;
+  transform: translate(-50%, -50%);
+  background: var(--accent);
+  border: 2px solid var(--accent-contrast);
+  border-radius: 4px;
+  cursor: ew-resize;
+  padding: 0;
+  touch-action: none;
+  transition: filter 0.15s ease-in-out;
+}
+.clip-trim-handle:hover,
+.clip-trim-handle:focus-visible {
+  filter: brightness(1.12);
+  outline: none;
+}
+
+/*
  * Theme toggle
  * ------------
  * A single switch, not two separate buttons — the sliding thumb itself

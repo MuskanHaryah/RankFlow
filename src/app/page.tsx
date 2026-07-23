@@ -76,10 +76,22 @@ const Home: NextPage = () => {
     return {
       clips: uploadedClips
         .filter(
-          (clip): clip is UploadedClip & { durationInFrames: number } =>
+          (
+            clip,
+          ): clip is UploadedClip & {
+            durationInFrames: number;
+            trimEndFrame: number;
+            sourceDurationInFrames: number;
+            sourceWidth: number;
+            sourceHeight: number;
+          } =>
             clip.durationInFrames !== null &&
             Number.isFinite(clip.durationInFrames) &&
-            clip.durationInFrames > 0,
+            clip.durationInFrames > 0 &&
+            clip.trimEndFrame !== null &&
+            clip.sourceDurationInFrames !== null &&
+            clip.sourceWidth !== null &&
+            clip.sourceHeight !== null,
         )
         .slice()
         .sort((a, b) => a.order - b.order)
@@ -96,6 +108,11 @@ const Home: NextPage = () => {
           titleStyleOverride: clip.titleStyleOverride,
           animationStyle: clip.animationStyle,
           stickers: clip.stickers,
+          trimStartFrame: clip.trimStartFrame,
+          trimEndFrame: clip.trimEndFrame,
+          sourceDurationInFrames: clip.sourceDurationInFrames,
+          sourceWidth: clip.sourceWidth,
+          sourceHeight: clip.sourceHeight,
         })),
       header,
       rankingListStyle,

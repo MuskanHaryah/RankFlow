@@ -23,7 +23,9 @@ import {
   useState,
 } from "react";
 import { Button } from "./Button";
+import { ClipTrimmer } from "./ClipTrimmer";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { isSourceVertical, VerticalityCheck } from "./VerticalityCheck";
 
 export type AnimationStyle =
   | "fade"
@@ -138,7 +140,7 @@ export type UploadedClip = {
   file: File;
   src: string; // starts as a blob: URL for instant preview, later replaced by the real uploaded server path
   order: number; // playback sequence position
-  durationInFrames: number | null; // null = still being read
+  durationInFrames: number | null; // effective (trimmed) length; null = still being read
   uploadStatus: "uploading" | "done" | "error";
   title: string; // empty string = no title text shown once revealed
   rank: number; // which badge slot (1..N) this clip is assigned to
@@ -148,6 +150,17 @@ export type UploadedClip = {
   titleStyleOverride: RankStyleOverride; // null = use the project-level title defaults
   animationStyle: AnimationStyle; // entrance animation for this clip's title reveal
   stickers: Sticker[]; // Phase 10: reaction emojis placed on this clip
+  // Phase 11 — trim points, in frames into the *original* source file.
+  // trimStartFrame always has a real value (0 until changed); trimEndFrame
+  // is null only until sourceDurationInFrames is known, at which point it
+  // defaults to the full length (no trim).
+  trimStartFrame: number;
+  trimEndFrame: number | null;
+  // Phase 11 — the clip's full, untrimmed length and native resolution,
+  // read from the browser's own <video> element once metadata loads.
+  sourceDurationInFrames: number | null;
+  sourceWidth: number | null;
+  sourceHeight: number | null;
 };
 
 export type PlayingOrderMode = "manual" | "ascending" | "descending" | "shuffle";
@@ -159,12 +172,17 @@ const MAX_CLIPS = 10;
 const FPS = 30;
 
 /**
- * Reads a video file's duration in seconds using an offscreen <video> element.
+ * Reads a video file's duration (seconds) and native pixel resolution
+ * using an offscreen <video> element. Width/height come free from the
+ * same loadedmetadata event duration does, so Phase 11's verticality
+ * check doesn't need a second pass over the file.
  *
  * Handles a known browser quirk: some formats (webm especially) report
  * duration as Infinity until you seek into the file.
  */
-const getVideoDurationInSeconds = (file: File): Promise<number> => {
+const getVideoMetadata = (
+  file: File,
+): Promise<{ durationSeconds: number; width: number; height: number }> => {
   return new Promise((resolve, reject) => {
     const videoEl = document.createElement("video");
     const objectUrl = URL.createObjectURL(file);
@@ -174,7 +192,11 @@ const getVideoDurationInSeconds = (file: File): Promise<number> => {
     const finish = (duration: number) => {
       URL.revokeObjectURL(objectUrl);
       if (Number.isFinite(duration) && duration > 0) {
-        resolve(duration);
+        resolve({
+          durationSeconds: duration,
+          width: videoEl.videoWidth,
+          height: videoEl.videoHeight,
+        });
       } else {
         reject(
           new Error(
@@ -558,6 +580,7 @@ const SortableClipRow: React.FC<{
   onStickersChange: (id: string, stickers: Sticker[]) => void;
   onArmStickerPlacement: (id: string, emoji: string) => void;
   onRequestRemove: (id: string) => void;
+  onTrimChange: (id: string, trimStartFrame: number, trimEndFrame: number) => void;
 }> = ({
   clip,
   clipCount,
@@ -574,6 +597,7 @@ const SortableClipRow: React.FC<{
   onStickersChange,
   onArmStickerPlacement,
   onRequestRemove,
+  onTrimChange,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: clip.id, disabled: !dragEnabled });
@@ -598,6 +622,20 @@ const SortableClipRow: React.FC<{
         upload failed
       </span>
     );
+
+  // Phase 11 — a quick at-a-glance flag; the full explanation and crop
+  // numbers live in the VerticalityCheck panel below.
+  const notVerticalBadge =
+    clip.sourceWidth !== null &&
+    clip.sourceHeight !== null &&
+    !isSourceVertical(clip.sourceWidth, clip.sourceHeight) ? (
+      <span
+        className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] text-accent"
+        title="Not vertical — RankFlow pads this with a blurred background so nothing is cropped or stretched"
+      >
+        padded
+      </span>
+    ) : null;
 
   return (
     <li
@@ -637,6 +675,7 @@ const SortableClipRow: React.FC<{
             : `${(clip.durationInFrames / FPS).toFixed(1)}s`}
         </span>
         {statusPill}
+        {notVerticalBadge}
         <button
           type="button"
           onClick={() => onRequestRemove(clip.id)}
@@ -661,6 +700,24 @@ const SortableClipRow: React.FC<{
             <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
           </svg>
         </button>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-3">
+        {clip.sourceDurationInFrames !== null && clip.trimEndFrame !== null ? (
+          <ClipTrimmer
+            sourceDurationInFrames={clip.sourceDurationInFrames}
+            trimStartFrame={clip.trimStartFrame}
+            trimEndFrame={clip.trimEndFrame}
+            onChange={(start, end) => onTrimChange(clip.id, start, end)}
+          />
+        ) : (
+          <p className="text-[11px] text-subtitle">
+            Reading clip length for trimming…
+          </p>
+        )}
+        {clip.sourceWidth !== null && clip.sourceHeight !== null ? (
+          <VerticalityCheck width={clip.sourceWidth} height={clip.sourceHeight} />
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-3">
@@ -869,30 +926,45 @@ export const ClipUploader = forwardRef<
         titleStyleOverride: null,
         animationStyle: "fade",
         stickers: [],
+        trimStartFrame: 0,
+        trimEndFrame: null,
+        sourceDurationInFrames: null,
+        sourceWidth: null,
+        sourceHeight: null,
       }));
 
       setClips(newClips);
       console.log("Uploaded clips (durations + server upload pending):", newClips);
 
-      // Duration reading and server upload run independently and in
-      // parallel per clip — neither depends on the other finishing first.
+      // Duration/resolution reading and server upload run independently and
+      // in parallel per clip — neither depends on the other finishing first.
       newClips.forEach((clip) => {
-        getVideoDurationInSeconds(clip.file)
-          .then((durationInSeconds) => {
-            const durationInFrames = Math.round(durationInSeconds * FPS);
+        getVideoMetadata(clip.file)
+          .then(({ durationSeconds, width, height }) => {
+            const durationInFrames = Math.round(durationSeconds * FPS);
 
             setClips((prevClips) =>
               prevClips.map((prevClip) =>
                 prevClip.id === clip.id
-                  ? { ...prevClip, durationInFrames }
+                  ? {
+                      ...prevClip,
+                      durationInFrames,
+                      sourceDurationInFrames: durationInFrames,
+                      sourceWidth: width,
+                      sourceHeight: height,
+                      // No trim yet — the full clip plays, same as before
+                      // Phase 11 existed.
+                      trimStartFrame: 0,
+                      trimEndFrame: durationInFrames,
+                    }
                   : prevClip,
               ),
             );
 
             console.log(
-              `Duration read for "${clip.file.name}": ${durationInSeconds.toFixed(
+              `Metadata read for "${clip.file.name}": ${durationSeconds.toFixed(
                 2,
-              )}s -> ${durationInFrames} frames at ${FPS}fps`,
+              )}s (${durationInFrames} frames at ${FPS}fps), ${width}x${height}`,
             );
           })
           .catch((err) => {
@@ -1053,6 +1125,41 @@ export const ClipUploader = forwardRef<
         prevClips.map((clip) =>
           clip.id === id ? { ...clip, stickers } : clip,
         ),
+      );
+    },
+    [],
+  );
+
+  // Phase 11 — dragging a trim handle updates durationInFrames directly
+  // (trimEndFrame - trimStartFrame), which is what everything downstream
+  // (totals, computeClipRanges, the render's trimBefore/trimAfter) already
+  // reads. Trimming can shorten a clip past stickers that were placed
+  // before the trim — those get clamped into the new range rather than
+  // left referencing frames that no longer exist.
+  const handleTrimChange = useCallback(
+    (id: string, trimStartFrame: number, trimEndFrame: number) => {
+      setClips((prevClips) =>
+        prevClips.map((clip) => {
+          if (clip.id !== id) {
+            return clip;
+          }
+          const durationInFrames = trimEndFrame - trimStartFrame;
+          const stickers = clip.stickers.map((sticker) => ({
+            ...sticker,
+            startFrame: Math.min(
+              sticker.startFrame,
+              Math.max(0, durationInFrames - 1),
+            ),
+            endFrame: Math.min(sticker.endFrame, durationInFrames),
+          }));
+          return {
+            ...clip,
+            trimStartFrame,
+            trimEndFrame,
+            durationInFrames,
+            stickers,
+          };
+        }),
       );
     },
     [],
@@ -1260,6 +1367,7 @@ export const ClipUploader = forwardRef<
                     onTitleStyleOverrideChange={handleTitleStyleOverrideChange}
                     onStickersChange={handleStickersChange}
                     onArmStickerPlacement={onArmStickerPlacement}
+                    onTrimChange={handleTrimChange}
                     onRequestRemove={(id) =>
                       setPendingDeleteClip(
                         clips.find((c) => c.id === id) ?? null,
