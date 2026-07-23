@@ -17,8 +17,9 @@ import {
   getShadeBackdropHeight,
 } from "./headerBackdrop";
 
-type Clip = z.infer<typeof CompositionProps>["clips"][number];
-type ClipRange = Clip & { from: number; to: number };
+export type Clip = z.infer<typeof CompositionProps>["clips"][number];
+export type ClipRange = Clip & { from: number; to: number };
+export type Sticker = Clip["stickers"][number];
 type HeaderProps = z.infer<typeof CompositionProps>["header"];
 type RankingListStyleProps = z.infer<typeof CompositionProps>["rankingListStyle"];
 
@@ -298,7 +299,7 @@ const AnimatedTitle: React.FC<{
  * different logic, the overlay's reveal timing could silently drift out
  * of sync with what's actually playing in the video.
  */
-const computeClipRanges = (clips: Clip[]): ClipRange[] => {
+export const computeClipRanges = (clips: Clip[]): ClipRange[] => {
   const sortedByOrder = clips.slice().sort((a, b) => a.order - b.order);
   let cursor = 0;
   return sortedByOrder.map((clip) => {
@@ -307,6 +308,40 @@ const computeClipRanges = (clips: Clip[]): ClipRange[] => {
     cursor = to;
     return { ...clip, from, to };
   });
+};
+
+/**
+ * Phase 10 — a single reaction-emoji sticker. Position/size are stored as
+ * percentages of the frame (see StickerSchema's comment for why), resolved
+ * to actual pixels here via useVideoConfig's width — so a sticker lands in
+ * the same relative spot regardless of the composition's actual resolution
+ * or whether Phase 8's extendCanvas mode is active. Rendered inside a
+ * <Sequence> by the caller, so this component itself doesn't need to know
+ * about timing at all — if it's mounted, it's visible.
+ */
+const StickerOverlay: React.FC<{ sticker: Sticker }> = ({ sticker }) => {
+  const { width } = useVideoConfig();
+  const fontSize = (width * sticker.size) / 100;
+
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      <span
+        style={{
+          position: "absolute",
+          left: `${sticker.x}%`,
+          top: `${sticker.y}%`,
+          // Centers the glyph on the stored x/y point rather than the
+          // point being its top-left corner — matches where a person
+          // actually clicked to place it.
+          transform: "translate(-50%, -50%)",
+          fontSize,
+          lineHeight: 1,
+        }}
+      >
+        {sticker.emoji}
+      </span>
+    </AbsoluteFill>
+  );
 };
 
 /**
@@ -553,6 +588,25 @@ export const Main = ({
             durationInFrames={clip.to - clip.from}
           >
             <Video src={clip.src} />
+            {clip.stickers.map((sticker) => {
+              // A nested <Sequence>'s `from` is relative to its parent
+              // Sequence's own local frame 0 — i.e. exactly the "0 = this
+              // clip's own start" convention stickers are stored in. No
+              // manual offset math needed here at all.
+              const durationInFrames = Math.max(
+                1,
+                sticker.endFrame - sticker.startFrame,
+              );
+              return (
+                <Sequence
+                  key={sticker.id}
+                  from={sticker.startFrame}
+                  durationInFrames={durationInFrames}
+                >
+                  <StickerOverlay sticker={sticker} />
+                </Sequence>
+              );
+            })}
           </Sequence>
         ))}
       </AbsoluteFill>

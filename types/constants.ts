@@ -25,6 +25,29 @@ export const RankStyleOverrideSchema = z
   })
   .nullable();
 
+// Phase 10 — a single reaction-emoji sticker placed on a specific clip.
+// Position and size are percentages (0-100) of the frame, not raw pixels
+// — this is what keeps a sticker's placement correct regardless of the
+// composition's actual resolution, and regardless of Phase 8's
+// extendCanvas mode changing the canvas height (the sticker still renders
+// relative to the video track's own area, which shifts as a whole). Timing
+// is frame-relative to this clip's own Sequence — 0 is the instant this
+// clip starts playing — the same convention every other per-clip timing
+// value in this schema already uses, and what lets stickers render as a
+// simple nested <Sequence> inside the clip's existing one.
+export const StickerSchema = z.object({
+  id: z.string(),
+  emoji: z.string(),
+  x: z.number(),
+  y: z.number(),
+  // Percentage of frame *width* — an emoji's glyph is roughly square, so
+  // sizing off one dimension keeps it proportional without needing a
+  // separate width/height.
+  size: z.number(),
+  startFrame: z.number(),
+  endFrame: z.number(),
+});
+
 export const ClipSchema = z.object({
   id: z.string(),
   // A URL the Remotion <Video> component can load: a blob: URL during the
@@ -67,6 +90,10 @@ export const ClipSchema = z.object({
     "glow",
     "bounceLetters",
   ]),
+  // Phase 10 — reaction emoji stickers placed on this specific clip.
+  // Separate from badgeEmoji (Phase 4's rank badge) — these are freely
+  // positioned decorations, not tied to the ranking list at all.
+  stickers: z.array(StickerSchema),
 });
 
 // A one-time title for the whole video (distinct from the per-clip ranking
@@ -239,6 +266,14 @@ export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
 // scattered around) since Phase 8 will likely need this same number to
 // size/time the scrim underneath it.
 export const HEADER_INTRO_SECONDS = 2;
+
+// Phase 10 — starting point for a newly click-placed sticker, before any
+// manual fine-tuning. A fairly large reaction-emoji size and a short dwell
+// time; both are easy to nudge from rather than meant to be final.
+export const STICKER_DEFAULT_SIZE_PERCENT = 14;
+export const STICKER_MIN_SIZE_PERCENT = 4;
+export const STICKER_MAX_SIZE_PERCENT = 40;
+export const STICKER_DEFAULT_DURATION_SECONDS = 1.5;
 
 // Changed from 1280x720 to vertical, matching the actual target format.
 export const VIDEO_WIDTH = 1080;

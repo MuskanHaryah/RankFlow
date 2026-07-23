@@ -15,7 +15,13 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useCallback, useEffect, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import { Button } from "./Button";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -90,6 +96,43 @@ export const FONT_WEIGHT_OPTIONS: { value: number; label: string }[] = [
   { value: 900, label: "Black" },
 ];
 
+// Phase 10 — mirrors types/constants.ts's StickerSchema shape (same
+// decoupling reasoning as RankStyleOverride above). x/y/size are
+// percentages of the frame; startFrame/endFrame are relative to this
+// clip's own timeline (0 = the instant this clip starts playing).
+export type Sticker = {
+  id: string;
+  emoji: string;
+  x: number;
+  y: number;
+  size: number;
+  startFrame: number;
+  endFrame: number;
+};
+
+// A curated set of common reaction emojis for one-tap picking. The text
+// input next to them covers anything not in this list — this isn't meant
+// to be exhaustive, just fast for the common case.
+export const REACTION_EMOJI_OPTIONS = [
+  "😭",
+  "😂",
+  "🔥",
+  "💀",
+  "😱",
+  "👀",
+  "✨",
+  "💦",
+  "❤️",
+  "👍",
+  "🤯",
+  "🎉",
+];
+
+// Matches STICKER_MIN/MAX_SIZE_PERCENT in types/constants.ts — duplicated
+// for the same reason FPS below is.
+const STICKER_MIN_SIZE_PERCENT = 4;
+const STICKER_MAX_SIZE_PERCENT = 40;
+
 export type UploadedClip = {
   id: string;
   file: File;
@@ -104,6 +147,7 @@ export type UploadedClip = {
   badgeStyleOverride: RankStyleOverride; // null = use the project-level badge defaults
   titleStyleOverride: RankStyleOverride; // null = use the project-level title defaults
   animationStyle: AnimationStyle; // entrance animation for this clip's title reveal
+  stickers: Sticker[]; // Phase 10: reaction emojis placed on this clip
 };
 
 export type PlayingOrderMode = "manual" | "ascending" | "descending" | "shuffle";
@@ -320,6 +364,180 @@ const RankStyleOverrideEditor: React.FC<{
 };
 
 /**
+ * Per-clip reaction-sticker editor. Placement itself happens by clicking
+ * the live preview (arming that click-catch mode is this component's
+ * "📍 Place on preview" button — the actual click handling lives in
+ * page.tsx, which has the Player); this component covers picking which
+ * emoji to place next, and fine-tuning/removing stickers already placed.
+ */
+const StickerEditor: React.FC<{
+  stickers: Sticker[];
+  clipDurationInFrames: number | null;
+  onStickersChange: (stickers: Sticker[]) => void;
+  onArmPlacement: (emoji: string) => void;
+  placementArmed: boolean;
+}> = ({
+  stickers,
+  clipDurationInFrames,
+  onStickersChange,
+  onArmPlacement,
+  placementArmed,
+}) => {
+  const [pendingEmoji, setPendingEmoji] = useState("😭");
+  // Duration may still be null while the file's metadata is being read —
+  // fall back to a generous default so the fine-tune sliders below aren't
+  // stuck at a 0-width range in the meantime.
+  const maxFrame = clipDurationInFrames ?? FPS * 10;
+
+  const updateSticker = (id: string, patch: Partial<Sticker>) => {
+    onStickersChange(
+      stickers.map((sticker) =>
+        sticker.id === id ? { ...sticker, ...patch } : sticker,
+      ),
+    );
+  };
+
+  const removeSticker = (id: string) => {
+    onStickersChange(stickers.filter((sticker) => sticker.id !== id));
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-xs text-subtitle">Reaction stickers</label>
+      <div className="flex items-center gap-1 flex-wrap">
+        {REACTION_EMOJI_OPTIONS.map((emoji) => (
+          <button
+            key={emoji}
+            type="button"
+            onClick={() => setPendingEmoji(emoji)}
+            className={`text-base leading-none px-1.5 py-1 rounded-geist border ${
+              pendingEmoji === emoji
+                ? "border-foreground"
+                : "border-transparent"
+            }`}
+          >
+            {emoji}
+          </button>
+        ))}
+        <input
+          type="text"
+          value={pendingEmoji}
+          onChange={(e) => setPendingEmoji(e.target.value)}
+          placeholder="or type/paste"
+          className="w-24 text-sm bg-background border border-unfocused-border-color rounded-geist px-2 py-1 text-foreground"
+        />
+        <button
+          type="button"
+          onClick={() => onArmPlacement(pendingEmoji)}
+          disabled={!pendingEmoji}
+          className={`text-sm rounded-geist border px-2 py-1 ${
+            placementArmed
+              ? "border-foreground bg-foreground text-background"
+              : "border-unfocused-border-color text-foreground"
+          }`}
+        >
+          {placementArmed ? "Click the preview…" : "📍 Place on preview"}
+        </button>
+      </div>
+
+      {stickers.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {stickers.map((sticker) => (
+            <div
+              key={sticker.id}
+              className="flex items-center gap-2 flex-wrap text-xs text-subtitle border border-unfocused-border-color rounded-geist p-2"
+            >
+              <span className="text-base">{sticker.emoji}</span>
+              <label>X</label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={sticker.x}
+                onChange={(e) =>
+                  updateSticker(sticker.id, { x: Number(e.target.value) })
+                }
+                className="w-16"
+              />
+              <label>Y</label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={sticker.y}
+                onChange={(e) =>
+                  updateSticker(sticker.id, { y: Number(e.target.value) })
+                }
+                className="w-16"
+              />
+              <label>Size</label>
+              <input
+                type="range"
+                min={STICKER_MIN_SIZE_PERCENT}
+                max={STICKER_MAX_SIZE_PERCENT}
+                value={sticker.size}
+                onChange={(e) =>
+                  updateSticker(sticker.id, { size: Number(e.target.value) })
+                }
+                className="w-16"
+              />
+              <label>Start (s)</label>
+              <input
+                type="number"
+                min={0}
+                max={(maxFrame / FPS).toFixed(2)}
+                step={0.1}
+                value={(sticker.startFrame / FPS).toFixed(2)}
+                onChange={(e) => {
+                  const startFrame = Math.max(
+                    0,
+                    Math.min(
+                      maxFrame - 1,
+                      Math.round(Number(e.target.value) * FPS),
+                    ),
+                  );
+                  updateSticker(sticker.id, {
+                    startFrame,
+                    endFrame: Math.max(startFrame + 1, sticker.endFrame),
+                  });
+                }}
+                className="w-16 bg-background border border-unfocused-border-color rounded-geist px-1 py-0.5 text-foreground"
+              />
+              <label>End (s)</label>
+              <input
+                type="number"
+                min={0}
+                max={(maxFrame / FPS).toFixed(2)}
+                step={0.1}
+                value={(sticker.endFrame / FPS).toFixed(2)}
+                onChange={(e) => {
+                  const endFrame = Math.max(
+                    sticker.startFrame + 1,
+                    Math.min(
+                      maxFrame,
+                      Math.round(Number(e.target.value) * FPS),
+                    ),
+                  );
+                  updateSticker(sticker.id, { endFrame });
+                }}
+                className="w-16 bg-background border border-unfocused-border-color rounded-geist px-1 py-0.5 text-foreground"
+              />
+              <button
+                type="button"
+                onClick={() => removeSticker(sticker.id)}
+                className="text-red-400"
+              >
+                ✕ Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+/**
  * A single draggable row in the clip list. Split out from the main
  * component because useSortable() must be called once per draggable item,
  * not once for the whole list.
@@ -329,6 +547,7 @@ const SortableClipRow: React.FC<{
   clipCount: number;
   dragEnabled: boolean;
   rankingListStyle: RankingListStyleForSeeding;
+  stickerPlacementArmedFor: string | null;
   onTitleChange: (id: string, title: string) => void;
   onRankChange: (id: string, rank: number) => void;
   onBadgeTypeChange: (id: string, badgeType: "number" | "emoji") => void;
@@ -336,12 +555,15 @@ const SortableClipRow: React.FC<{
   onAnimationStyleChange: (id: string, animationStyle: AnimationStyle) => void;
   onBadgeStyleOverrideChange: (id: string, override: RankStyleOverride) => void;
   onTitleStyleOverrideChange: (id: string, override: RankStyleOverride) => void;
+  onStickersChange: (id: string, stickers: Sticker[]) => void;
+  onArmStickerPlacement: (id: string, emoji: string) => void;
   onRequestRemove: (id: string) => void;
 }> = ({
   clip,
   clipCount,
   dragEnabled,
   rankingListStyle,
+  stickerPlacementArmedFor,
   onTitleChange,
   onRankChange,
   onBadgeTypeChange,
@@ -349,6 +571,8 @@ const SortableClipRow: React.FC<{
   onAnimationStyleChange,
   onBadgeStyleOverrideChange,
   onTitleStyleOverrideChange,
+  onStickersChange,
+  onArmStickerPlacement,
   onRequestRemove,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -537,15 +761,53 @@ const SortableClipRow: React.FC<{
             }
           />
         </div>
+
+        <div className="sm:pl-[10.5rem]">
+          <StickerEditor
+            stickers={clip.stickers}
+            clipDurationInFrames={clip.durationInFrames}
+            onStickersChange={(stickers) => onStickersChange(clip.id, stickers)}
+            onArmPlacement={(emoji) => onArmStickerPlacement(clip.id, emoji)}
+            placementArmed={stickerPlacementArmedFor === clip.id}
+          />
+        </div>
       </div>
     </li>
   );
 };
 
-export const ClipUploader: React.FC<{
-  onClipsChange?: (clips: UploadedClip[]) => void;
-  rankingListStyle: RankingListStyleForSeeding;
-}> = ({ onClipsChange, rankingListStyle }) => {
+// Phase 10: ClipUploader owns `clips` as uncontrolled internal state (same
+// as it always has — see onClipsChange above), so page.tsx can't just pass
+// a new sticker down as a prop the normal way. This ref exposes the one
+// imperative entry point page.tsx needs: "a sticker was just placed by
+// clicking the preview, add it to this clip." Nothing else reaches in from
+// outside this component.
+export type ClipUploaderHandle = {
+  addSticker: (clipId: string, sticker: Sticker) => void;
+};
+
+export const ClipUploader = forwardRef<
+  ClipUploaderHandle,
+  {
+    onClipsChange?: (clips: UploadedClip[]) => void;
+    rankingListStyle: RankingListStyleForSeeding;
+    // Which clip (if any) is currently armed for click-to-place, and the
+    // callback to request arming a new one — the armed state itself is
+    // owned by page.tsx since it's also what drives the click-catching
+    // overlay rendered on top of the Player there.
+    stickerPlacementArmedFor: string | null;
+    onArmStickerPlacement: (clipId: string, emoji: string) => void;
+  }
+>(
+  (
+    {
+      onClipsChange,
+      rankingListStyle,
+      stickerPlacementArmedFor,
+      onArmStickerPlacement,
+    },
+    ref,
+  ) => {
   const [clips, setClips] = useState<UploadedClip[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
   // Manual = drag-and-drop decides play order directly. Ascending/descending
@@ -606,6 +868,7 @@ export const ClipUploader: React.FC<{
         badgeStyleOverride: null,
         titleStyleOverride: null,
         animationStyle: "fade",
+        stickers: [],
       }));
 
       setClips(newClips);
@@ -784,6 +1047,36 @@ export const ClipUploader: React.FC<{
     [],
   );
 
+  const handleStickersChange = useCallback(
+    (id: string, stickers: Sticker[]) => {
+      setClips((prevClips) =>
+        prevClips.map((clip) =>
+          clip.id === id ? { ...clip, stickers } : clip,
+        ),
+      );
+    },
+    [],
+  );
+
+  // The one imperative entry point page.tsx uses after a placement click
+  // on the preview — see the ClipUploaderHandle comment above for why this
+  // has to be a ref rather than a normal prop.
+  useImperativeHandle(
+    ref,
+    () => ({
+      addSticker: (clipId: string, sticker: Sticker) => {
+        setClips((prevClips) =>
+          prevClips.map((clip) =>
+            clip.id === clipId
+              ? { ...clip, stickers: [...clip.stickers, sticker] }
+              : clip,
+          ),
+        );
+      },
+    }),
+    [],
+  );
+
   const handleAnimationStyleChange = useCallback(
     (id: string, animationStyle: AnimationStyle) => {
       setClips((prevClips) =>
@@ -957,6 +1250,7 @@ export const ClipUploader: React.FC<{
                     clipCount={clips.length}
                     dragEnabled={playingOrderMode === "manual"}
                     rankingListStyle={rankingListStyle}
+                    stickerPlacementArmedFor={stickerPlacementArmedFor}
                     onTitleChange={handleTitleChange}
                     onRankChange={handleRankChange}
                     onBadgeTypeChange={handleBadgeTypeChange}
@@ -964,6 +1258,8 @@ export const ClipUploader: React.FC<{
                     onAnimationStyleChange={handleAnimationStyleChange}
                     onBadgeStyleOverrideChange={handleBadgeStyleOverrideChange}
                     onTitleStyleOverrideChange={handleTitleStyleOverrideChange}
+                    onStickersChange={handleStickersChange}
+                    onArmStickerPlacement={onArmStickerPlacement}
                     onRequestRemove={(id) =>
                       setPendingDeleteClip(
                         clips.find((c) => c.id === id) ?? null,
@@ -995,4 +1291,7 @@ export const ClipUploader: React.FC<{
       />
     </div>
   );
-}
+  },
+);
+
+ClipUploader.displayName = "ClipUploader";
