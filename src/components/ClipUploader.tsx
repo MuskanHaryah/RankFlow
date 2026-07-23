@@ -17,6 +17,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "./Button";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 export type AnimationStyle =
   | "fade"
@@ -335,6 +336,7 @@ const SortableClipRow: React.FC<{
   onAnimationStyleChange: (id: string, animationStyle: AnimationStyle) => void;
   onBadgeStyleOverrideChange: (id: string, override: RankStyleOverride) => void;
   onTitleStyleOverrideChange: (id: string, override: RankStyleOverride) => void;
+  onRequestRemove: (id: string) => void;
 }> = ({
   clip,
   clipCount,
@@ -347,6 +349,7 @@ const SortableClipRow: React.FC<{
   onAnimationStyleChange,
   onBadgeStyleOverrideChange,
   onTitleStyleOverrideChange,
+  onRequestRemove,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: clip.id, disabled: !dragEnabled });
@@ -410,6 +413,30 @@ const SortableClipRow: React.FC<{
             : `${(clip.durationInFrames / FPS).toFixed(1)}s`}
         </span>
         {statusPill}
+        <button
+          type="button"
+          onClick={() => onRequestRemove(clip.id)}
+          title="Remove this clip"
+          aria-label="Remove this clip"
+          className="ml-auto shrink-0 rounded-geist p-1.5 text-subtitle transition-colors duration-150 hover:bg-geist-error/10 hover:text-geist-error"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+          </svg>
+        </button>
       </div>
 
       <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-3">
@@ -529,6 +556,11 @@ export const ClipUploader: React.FC<{
   // not applied until the button next to it is clicked.
   const [globalAnimationChoice, setGlobalAnimationChoice] =
     useState<AnimationStyle>("fade");
+  // Holds the clip awaiting delete confirmation — null means the dialog is
+  // closed. Storing the whole clip (not just an id) so the dialog can show
+  // the filename without a second lookup.
+  const [pendingDeleteClip, setPendingDeleteClip] =
+    useState<UploadedClip | null>(null);
 
   // A small activation distance prevents drags from firing on a plain
   // click — without this, clicking anywhere on a row could accidentally
@@ -797,6 +829,35 @@ export const ClipUploader: React.FC<{
     setClips((prevClips) => shuffleOrder(prevClips));
   }, []);
 
+  // Removing a clip must keep both `rank` and `order` as valid, gap-free
+  // 1..N permutations for the remaining clips (N = new count) — e.g.
+  // deleting the clip at rank 3 out of 1-2-3-4-5 should leave 1-2-3-4, not
+  // a gap where 3 used to be, since downstream logic (badge slot 1..N,
+  // the max on the rank input, ascending/descending order derivation) all
+  // assumes a dense permutation. Rank and order are re-compacted
+  // independently, each preserving its own existing relative ordering, the
+  // same way they're treated as independent concepts everywhere else.
+  const handleRemoveClip = useCallback((id: string) => {
+    setClips((prevClips) => {
+      const removedClip = prevClips.find((c) => c.id === id);
+      if (removedClip && removedClip.src.startsWith("blob:")) {
+        URL.revokeObjectURL(removedClip.src);
+      }
+
+      const remaining = prevClips.filter((c) => c.id !== id);
+      const byRank = [...remaining].sort((a, b) => a.rank - b.rank);
+      const rankById = new Map(byRank.map((c, i) => [c.id, i + 1]));
+      const byOrder = [...remaining].sort((a, b) => a.order - b.order);
+      const orderById = new Map(byOrder.map((c, i) => [c.id, i + 1]));
+
+      return remaining.map((c) => ({
+        ...c,
+        rank: rankById.get(c.id) ?? c.rank,
+        order: orderById.get(c.id) ?? c.order,
+      }));
+    });
+  }, []);
+
   return (
     <div className="flex flex-col gap-4 text-foreground">
       <div className="flex flex-col gap-2">
@@ -903,6 +964,11 @@ export const ClipUploader: React.FC<{
                     onAnimationStyleChange={handleAnimationStyleChange}
                     onBadgeStyleOverrideChange={handleBadgeStyleOverrideChange}
                     onTitleStyleOverrideChange={handleTitleStyleOverrideChange}
+                    onRequestRemove={(id) =>
+                      setPendingDeleteClip(
+                        clips.find((c) => c.id === id) ?? null,
+                      )
+                    }
                   />
                 ))}
               </ul>
@@ -910,6 +976,23 @@ export const ClipUploader: React.FC<{
           </DndContext>
         </>
       ) : null}
+      <ConfirmDialog
+        open={pendingDeleteClip !== null}
+        title="Remove this clip?"
+        description={
+          pendingDeleteClip
+            ? `"${pendingDeleteClip.file.name}" will be removed from the project. This can't be undone.`
+            : undefined
+        }
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (pendingDeleteClip) {
+            handleRemoveClip(pendingDeleteClip.id);
+          }
+          setPendingDeleteClip(null);
+        }}
+        onCancel={() => setPendingDeleteClip(null)}
+      />
     </div>
   );
 }

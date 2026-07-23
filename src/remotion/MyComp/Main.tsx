@@ -379,7 +379,13 @@ const RankingList: React.FC<{
                   animationStyle={clip.animationStyle}
                   textStyle={{
                     fontSize: titleFontSize,
-                    fontWeight: titleStyle.fontWeight,
+                    // "Faded" comes from a genuinely light weight, not a
+                    // capped-down version of whatever weight was chosen —
+                    // finished titles always render at 300 regardless of
+                    // the configured (usually bold) title weight, which is
+                    // what actually reads as "light" rather than "still
+                    // kind of bold but a little dimmer."
+                    fontWeight: isCurrent ? titleStyle.fontWeight : 300,
                     fontFamily: titleStyle.fontFamily,
                     // AnimatedTitle's own entrance animation drives this
                     // span's `opacity` (0 -> 1) for several of the reveal
@@ -390,17 +396,13 @@ const RankingList: React.FC<{
                     // itself instead, the same principle the original
                     // rgba-alpha approach used, just generalized to work
                     // with any base color the person picks, not only white.
-                    // Finished clips use a light-white tone rather than a
-                    // heavily dimmed gray — a low-opacity mix (previously
-                    // 35%) reads as an obviously "grayed out" state that
-                    // draws its own attention; staying close to full
-                    // brightness keeps focus on the currently-playing item
-                    // without making already-played titles look muted.
                     color: isCurrent
                       ? titleStyle.color
-                      : `color-mix(in srgb, ${titleStyle.color} 85%, transparent)`,
+                      : `color-mix(in srgb, ${titleStyle.color} 68%, transparent)`,
                     textShadow: "0 2px 6px rgba(0,0,0,0.7)",
-                    ...textStrokeStyle(titleStyle),
+                    ...(isCurrent
+                      ? textStrokeStyle(titleStyle)
+                      : textStrokeStyle({ ...titleStyle, borderEnabled: false })),
                   }}
                 />
               ) : null}
