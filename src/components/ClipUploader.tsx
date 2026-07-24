@@ -23,6 +23,7 @@ import {
   useState,
 } from "react";
 import { Button } from "./Button";
+import { ClipCropBox } from "./ClipCropBox";
 import { ClipTrimmer } from "./ClipTrimmer";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { isSourceVertical, VerticalityCheck } from "./VerticalityCheck";
@@ -168,6 +169,8 @@ export type UploadedClip = {
   cropZoom: number;
   cropOffsetX: number;
   cropOffsetY: number;
+  // Phase 11 (extended) — rotation in degrees, -180 to 180. 0 = untouched.
+  cropRotationDeg: number;
 };
 
 export type PlayingOrderMode = "manual" | "ascending" | "descending" | "shuffle";
@@ -576,82 +579,143 @@ const StickerEditor: React.FC<{
  * zoom 1 — so the pan sliders are disabled until then.
  */
 const ClipCropControls: React.FC<{
+  src: string;
+  previewTimeSeconds: number;
   cropZoom: number;
   cropOffsetX: number;
   cropOffsetY: number;
+  cropRotationDeg: number;
   onChange: (
     cropZoom: number,
     cropOffsetX: number,
     cropOffsetY: number,
   ) => void;
-}> = ({ cropZoom, cropOffsetX, cropOffsetY, onChange }) => {
-  const isCropped = cropZoom > 1 || cropOffsetX !== 0 || cropOffsetY !== 0;
+  onRotationChange: (cropRotationDeg: number) => void;
+}> = ({
+  src,
+  previewTimeSeconds,
+  cropZoom,
+  cropOffsetX,
+  cropOffsetY,
+  cropRotationDeg,
+  onChange,
+  onRotationChange,
+}) => {
+  const isCropped =
+    cropZoom > 1 || cropOffsetX !== 0 || cropOffsetY !== 0 ||
+    cropRotationDeg !== 0;
   const canPan = cropZoom > 1;
 
+  const resetAll = () => {
+    onChange(1, 0, 0);
+    onRotationChange(0);
+  };
+
+  const rotate90 = () => {
+    // Wrap into (-180, 180] so the slider below always reflects the
+    // current value correctly instead of accumulating past its own range.
+    let next = cropRotationDeg + 90;
+    if (next > 180) next -= 360;
+    onRotationChange(next);
+  };
+
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between text-[11px] text-subtitle">
-        <span>Crop / zoom (works on any clip, vertical or not)</span>
+        <span>Crop / zoom / rotate (works on any clip, vertical or not)</span>
         {isCropped ? (
           <button
             type="button"
-            onClick={() => onChange(1, 0, 0)}
+            onClick={resetAll}
             className="text-accent hover:underline"
           >
             Reset crop
           </button>
         ) : null}
       </div>
-      <div className="flex flex-wrap items-center gap-3 control-group">
-        <label className="flex items-center gap-1.5 text-xs text-subtitle">
-          Zoom
-          <input
-            type="range"
-            min={1}
-            max={3}
-            step={0.05}
-            value={cropZoom}
-            onChange={(e) =>
-              onChange(Number(e.target.value), cropOffsetX, cropOffsetY)
-            }
-            className="w-20"
-          />
-          <span className="font-mono-tabular w-10">
-            {cropZoom.toFixed(2)}x
-          </span>
-        </label>
-        <label
-          className={`flex items-center gap-1.5 text-xs ${canPan ? "text-subtitle" : "text-disabled-text-color"}`}
-        >
-          Pan X
-          <input
-            type="range"
-            min={-100}
-            max={100}
-            value={cropOffsetX}
-            disabled={!canPan}
-            onChange={(e) =>
-              onChange(cropZoom, Number(e.target.value), cropOffsetY)
-            }
-            className="w-20"
-          />
-        </label>
-        <label
-          className={`flex items-center gap-1.5 text-xs ${canPan ? "text-subtitle" : "text-disabled-text-color"}`}
-        >
-          Pan Y
-          <input
-            type="range"
-            min={-100}
-            max={100}
-            value={cropOffsetY}
-            disabled={!canPan}
-            onChange={(e) =>
-              onChange(cropZoom, cropOffsetX, Number(e.target.value))
-            }
-            className="w-20"
-          />
-        </label>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start control-group">
+        <ClipCropBox
+          src={src}
+          previewTimeSeconds={previewTimeSeconds}
+          rotationDeg={cropRotationDeg}
+          cropZoom={cropZoom}
+          cropOffsetX={cropOffsetX}
+          cropOffsetY={cropOffsetY}
+          onChange={onChange}
+        />
+
+        <div className="flex flex-1 flex-col gap-2.5">
+          <label className="flex items-center gap-1.5 text-xs text-subtitle">
+            Zoom
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.05}
+              value={cropZoom}
+              onChange={(e) =>
+                onChange(Number(e.target.value), cropOffsetX, cropOffsetY)
+              }
+              className="w-24"
+            />
+            <span className="font-mono-tabular w-10">
+              {cropZoom.toFixed(2)}x
+            </span>
+          </label>
+          <label
+            className={`flex items-center gap-1.5 text-xs ${canPan ? "text-subtitle" : "text-disabled-text-color"}`}
+          >
+            Pan X
+            <input
+              type="range"
+              min={-100}
+              max={100}
+              value={cropOffsetX}
+              disabled={!canPan}
+              onChange={(e) =>
+                onChange(cropZoom, Number(e.target.value), cropOffsetY)
+              }
+              className="w-24"
+            />
+          </label>
+          <label
+            className={`flex items-center gap-1.5 text-xs ${canPan ? "text-subtitle" : "text-disabled-text-color"}`}
+          >
+            Pan Y
+            <input
+              type="range"
+              min={-100}
+              max={100}
+              value={cropOffsetY}
+              disabled={!canPan}
+              onChange={(e) =>
+                onChange(cropZoom, cropOffsetX, Number(e.target.value))
+              }
+              className="w-24"
+            />
+          </label>
+          <div className="flex items-center gap-2">
+            <label className="flex flex-1 items-center gap-1.5 text-xs text-subtitle">
+              Rotate
+              <input
+                type="range"
+                min={-180}
+                max={180}
+                step={0.5}
+                value={cropRotationDeg}
+                onChange={(e) => onRotationChange(Number(e.target.value))}
+                className="w-24"
+              />
+              <span className="font-mono-tabular w-10">
+                {cropRotationDeg.toFixed(0)}°
+              </span>
+            </label>
+            <Button compact secondary onClick={rotate90}>
+              +90°
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -685,6 +749,7 @@ const SortableClipRow: React.FC<{
     cropOffsetX: number,
     cropOffsetY: number,
   ) => void;
+  onRotationChange: (id: string, cropRotationDeg: number) => void;
 }> = ({
   clip,
   clipCount,
@@ -703,6 +768,7 @@ const SortableClipRow: React.FC<{
   onRequestRemove,
   onTrimChange,
   onCropChange,
+  onRotationChange,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: clip.id, disabled: !dragEnabled });
@@ -824,12 +890,16 @@ const SortableClipRow: React.FC<{
           <VerticalityCheck width={clip.sourceWidth} height={clip.sourceHeight} />
         ) : null}
         <ClipCropControls
+          src={clip.src}
+          previewTimeSeconds={clip.trimStartFrame / FPS}
           cropZoom={clip.cropZoom}
           cropOffsetX={clip.cropOffsetX}
           cropOffsetY={clip.cropOffsetY}
+          cropRotationDeg={clip.cropRotationDeg}
           onChange={(zoom, offsetX, offsetY) =>
             onCropChange(clip.id, zoom, offsetX, offsetY)
           }
+          onRotationChange={(deg) => onRotationChange(clip.id, deg)}
         />
       </div>
 
@@ -1047,6 +1117,7 @@ export const ClipUploader = forwardRef<
         cropZoom: 1,
         cropOffsetX: 0,
         cropOffsetY: 0,
+        cropRotationDeg: 0,
       }));
 
       setClips(newClips);
@@ -1302,6 +1373,20 @@ export const ClipUploader = forwardRef<
     [],
   );
 
+  // Phase 11 (extended) — rotation is independent of zoom/pan (see
+  // ClipVideo in Main.tsx: it folds into an extra cover-scale rather than
+  // affecting cropOffsetX/Y), so it gets its own setter.
+  const handleRotationChange = useCallback(
+    (id: string, cropRotationDeg: number) => {
+      setClips((prevClips) =>
+        prevClips.map((clip) =>
+          clip.id === id ? { ...clip, cropRotationDeg } : clip,
+        ),
+      );
+    },
+    [],
+  );
+
   // The one imperative entry point page.tsx uses after a placement click
   // on the preview — see the ClipUploaderHandle comment above for why this
   // has to be a ref rather than a normal prop.
@@ -1506,6 +1591,7 @@ export const ClipUploader = forwardRef<
                     onArmStickerPlacement={onArmStickerPlacement}
                     onTrimChange={handleTrimChange}
                     onCropChange={handleCropChange}
+                    onRotationChange={handleRotationChange}
                     onRequestRemove={(id) =>
                       setPendingDeleteClip(
                         clips.find((c) => c.id === id) ?? null,

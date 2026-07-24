@@ -495,6 +495,64 @@ input[type="file"]::file-selector-button:hover {
 }
 
 /*
+ * Clip crop box
+ * -------------
+ * A drag-to-crop selector, same basic interaction as cropping a still
+ * image. `overflow: hidden` here is load-bearing: the selection's oversized
+ * box-shadow is what dims everything outside it (a standard cropper trick
+ * that avoids needing a separate clip-path'd scrim element), and it has
+ * to be clipped to the container's own rounded corners.
+ */
+.clip-crop-box {
+  position: relative;
+  width: 100%;
+  max-width: 150px;
+  aspect-ratio: 1080 / 1920;
+  margin: 0 auto;
+  border-radius: var(--radius-geist);
+  overflow: hidden;
+  border: 1px solid var(--unfocused-border-color);
+  background: #000;
+  touch-action: none;
+}
+.clip-crop-box-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.clip-crop-box-selection {
+  position: absolute;
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+  cursor: move;
+  /* The oversized, semi-transparent shadow is what visually dims
+     everything outside the selection — clipped by the container's own
+     overflow: hidden above. */
+  box-shadow: 0 0 0 2000px rgba(10, 11, 13, 0.6);
+}
+.clip-crop-box-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid var(--accent-contrast);
+  padding: 0;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.clip-crop-box-handle:hover,
+.clip-crop-box-handle:focus-visible {
+  filter: brightness(1.12);
+  outline: none;
+}
+
+/*
  * Theme toggle
  * ------------
  * A single switch, not two separate buttons — the sliding thumb itself

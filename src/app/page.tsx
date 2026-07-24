@@ -116,6 +116,7 @@ const Home: NextPage = () => {
           cropZoom: clip.cropZoom,
           cropOffsetX: clip.cropOffsetX,
           cropOffsetY: clip.cropOffsetY,
+          cropRotationDeg: clip.cropRotationDeg,
         })),
       header,
       rankingListStyle,

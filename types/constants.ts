@@ -127,11 +127,18 @@ export const ClipSchema = z.object({
   // pad — even for a non-vertical clip — so cropping is never gated
   // behind a clip failing the verticality check.
   cropZoom: z.number(),
-  // Pan, as a percent of the cropped frame's own size (so it feels
-  // proportional at any zoom level). 0 = centered. Only meaningful once
+  // Pan, as a percent of the available slack at the current zoom/rotation
+  // (so it feels proportional at any zoom level, and ±100 always means
+  // "panned all the way to the edge"). 0 = centered. Only meaningful once
   // cropZoom > 1 — there's no "spare" image to pan into otherwise.
   cropOffsetX: z.number(),
   cropOffsetY: z.number(),
+  // Rotation in degrees (-180 to 180), for straightening a tilted shot or
+  // reorienting footage that was recorded sideways/upside down. Whenever
+  // this is non-zero, an additional scale is applied automatically (see
+  // getRotationCoverScale below) so the rotated content still fully
+  // covers the frame — no blank corners to crop around.
+  cropRotationDeg: z.number(),
 });
 
 // A one-time title for the whole video (distinct from the per-clip ranking
@@ -347,6 +354,36 @@ export const isClipVertical = (width: number, height: number): boolean => {
 // wide.
 export const CLIP_CROP_MIN_ZOOM = 1;
 export const CLIP_CROP_MAX_ZOOM = 3;
+
+/**
+ * How much extra uniform scale a clip needs, on top of its own zoom, so
+ * that rotating it by `rotationDeg` still fully covers a frame of the
+ * given aspect ratio (width/height) — i.e. no blank corners peeking
+ * through at the frame's edges. This is the standard "rotate then
+ * re-cover" formula: a same-aspect rectangle rotated by θ needs scale
+ * max(cosθ + sinθ/aspect, aspect·sinθ + cosθ) to still cover its original
+ * bounding box. At rotationDeg = 0 this is exactly 1 (no extra scale).
+ *
+ * Duplicated (deliberately — see ClipUploader.tsx's own FPS constant for
+ * the same reasoning) as a local copy in ClipCropBox.tsx, which needs the
+ * identical formula to render a live preview that actually matches what
+ * Main.tsx will produce, without importing the render pipeline into the
+ * upload UI.
+ */
+export const getRotationCoverScale = (
+  rotationDeg: number,
+  aspect: number = VIDEO_WIDTH / VIDEO_HEIGHT,
+): number => {
+  if (rotationDeg === 0) {
+    return 1;
+  }
+  const rad = (rotationDeg * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(rad));
+  const sin = Math.abs(Math.sin(rad));
+  const scaleForWidth = cos + sin / aspect;
+  const scaleForHeight = aspect * sin + cos;
+  return Math.max(scaleForWidth, scaleForHeight);
+};
 
 // Fallback only — used before any clips exist. Real total duration is
 // calculated from the clips array once they're uploaded (see Root.tsx).

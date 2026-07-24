@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   CompositionProps,
   HEADER_INTRO_SECONDS,
+  getRotationCoverScale,
   isClipVertical,
 } from "../../../types/constants";
 import {
@@ -314,29 +315,39 @@ const AnimatedTitle: React.FC<{
  * copy is muted so the clip's audio only plays once, from the foreground
  * copy.
  *
- * A manual crop (cropZoom > 1) always wins over the automatic pad, even
- * for a non-vertical clip — cropping is available on every clip
- * regardless of orientation, not gated behind failing the verticality
- * check.
+ * A manual crop (cropZoom > 1 or cropRotationDeg !== 0) always wins over
+ * the automatic pad, even for a non-vertical clip — cropping and rotation
+ * are available on every clip regardless of orientation, not gated behind
+ * failing the verticality check.
  */
 const ClipVideo: React.FC<{ clip: Clip }> = ({ clip }) => {
-  const hasManualCrop = clip.cropZoom > 1;
+  const hasManualCrop = clip.cropZoom > 1 || clip.cropRotationDeg !== 0;
   const vertical = isClipVertical(clip.sourceWidth, clip.sourceHeight);
 
   if (hasManualCrop || vertical) {
+    let transform: string | undefined;
+    if (hasManualCrop) {
+      // Rotating a clip enlarges what "fully covering the frame" requires
+      // (see getRotationCoverScale) — folded into the zoom so a rotated
+      // clip never shows blank corners. Pan is expressed as a percent of
+      // the *available slack* at this effective zoom, and kept outermost
+      // in the transform list so it always shifts the frame up/down/
+      // left/right on screen, regardless of the rotation angle.
+      const rotationCoverScale = getRotationCoverScale(clip.cropRotationDeg);
+      const effectiveZoom = clip.cropZoom * rotationCoverScale;
+      const translateXPercent =
+        ((clip.cropOffsetX / 100) * (effectiveZoom - 1) * 100) / 2;
+      const translateYPercent =
+        ((clip.cropOffsetY / 100) * (effectiveZoom - 1) * 100) / 2;
+      transform = `translate(${translateXPercent}%, ${translateYPercent}%) rotate(${clip.cropRotationDeg}deg) scale(${effectiveZoom})`;
+    }
     return (
       <Video
         src={clip.src}
         trimBefore={clip.trimStartFrame}
         trimAfter={clip.trimEndFrame}
         objectFit="cover"
-        style={{
-          width: "100%",
-          height: "100%",
-          transform: hasManualCrop
-            ? `scale(${clip.cropZoom}) translate(${clip.cropOffsetX}%, ${clip.cropOffsetY}%)`
-            : undefined,
-        }}
+        style={{ width: "100%", height: "100%", transform }}
       />
     );
   }
