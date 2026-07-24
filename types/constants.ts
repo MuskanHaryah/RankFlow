@@ -118,6 +118,20 @@ export const ClipSchema = z.object({
   // stretched or cropped. The source file itself is never modified.
   sourceWidth: z.number(),
   sourceHeight: z.number(),
+  // Phase 11 (extended) — manual crop/zoom/pan, available on every clip
+  // regardless of orientation, not just non-vertical ones. cropZoom === 1
+  // (the default) means "untouched" — Main.tsx's ClipVideo falls back to
+  // its automatic behavior (plain cover for vertical footage, blurred-pad
+  // for non-vertical). Setting cropZoom above 1 means the person has
+  // taken over framing manually, and that always wins over the automatic
+  // pad — even for a non-vertical clip — so cropping is never gated
+  // behind a clip failing the verticality check.
+  cropZoom: z.number(),
+  // Pan, as a percent of the cropped frame's own size (so it feels
+  // proportional at any zoom level). 0 = centered. Only meaningful once
+  // cropZoom > 1 — there's no "spare" image to pan into otherwise.
+  cropOffsetX: z.number(),
+  cropOffsetY: z.number(),
 });
 
 // A one-time title for the whole video (distinct from the per-clip ranking
@@ -326,6 +340,13 @@ export const isClipVertical = (width: number, height: number): boolean => {
     Math.abs(ratio - VERTICAL_ASPECT_RATIO) <= VERTICAL_ASPECT_RATIO_TOLERANCE
   );
 };
+
+// Phase 11 (extended) — manual crop/zoom bounds. 1 = no crop (fit as-is);
+// 3 is a generous enough ceiling to punch into a shoulder-level shot
+// without the source's own resolution starting to look soft at 1080px
+// wide.
+export const CLIP_CROP_MIN_ZOOM = 1;
+export const CLIP_CROP_MAX_ZOOM = 3;
 
 // Fallback only — used before any clips exist. Real total duration is
 // calculated from the clips array once they're uploaded (see Root.tsx).

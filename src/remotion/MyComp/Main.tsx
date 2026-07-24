@@ -305,25 +305,38 @@ const AnimatedTitle: React.FC<{
  * range the person selected in the trim scrubber, rather than the whole
  * source clip.
  *
- * If the source isn't close to the vertical 9:16 canvas, it's padded
- * automatically: a blurred, scaled-up copy of the same clip fills the
- * frame as a background, with a normal, un-cropped, un-stretched copy
- * centered on top. This is deliberately the simple, safe fallback rather
- * than attempting smart subject-tracking crop — see Phase 11's own notes
- * on why. The background copy is muted so the clip's audio only plays
- * once, from the foreground copy.
+ * If the source isn't close to the vertical 9:16 canvas *and* the person
+ * hasn't set a manual crop, it's padded automatically: a blurred,
+ * scaled-up copy of the same clip fills the frame as a background, with a
+ * normal, un-cropped, un-stretched copy centered on top. This is
+ * deliberately the simple, safe fallback rather than attempting smart
+ * subject-tracking crop — see Phase 11's own notes on why. The background
+ * copy is muted so the clip's audio only plays once, from the foreground
+ * copy.
+ *
+ * A manual crop (cropZoom > 1) always wins over the automatic pad, even
+ * for a non-vertical clip — cropping is available on every clip
+ * regardless of orientation, not gated behind failing the verticality
+ * check.
  */
 const ClipVideo: React.FC<{ clip: Clip }> = ({ clip }) => {
+  const hasManualCrop = clip.cropZoom > 1;
   const vertical = isClipVertical(clip.sourceWidth, clip.sourceHeight);
 
-  if (vertical) {
+  if (hasManualCrop || vertical) {
     return (
       <Video
         src={clip.src}
         trimBefore={clip.trimStartFrame}
         trimAfter={clip.trimEndFrame}
         objectFit="cover"
-        style={{ width: "100%", height: "100%" }}
+        style={{
+          width: "100%",
+          height: "100%",
+          transform: hasManualCrop
+            ? `scale(${clip.cropZoom}) translate(${clip.cropOffsetX}%, ${clip.cropOffsetY}%)`
+            : undefined,
+        }}
       />
     );
   }

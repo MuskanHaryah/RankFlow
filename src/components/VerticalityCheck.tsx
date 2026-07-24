@@ -115,10 +115,11 @@ export const VerticalityCheck: React.FC<{
       </p>
       <p className="text-subtitle">
         RankFlow already pads this automatically with a blurred background
-        so nothing gets cut off. Prefer to crop instead?{" "}
+        so nothing gets cut off. Prefer to crop instead? Use the Crop /
+        zoom controls below —{" "}
         {crop.axis === "width"
-          ? `Crop about ${crop.cropEachSidePx}px off both the left and right (down to ${crop.resultWidth}×${crop.resultHeight}) for an exact 9:16 frame.`
-          : `Crop about ${crop.cropEachSidePx}px off both the top and bottom (down to ${crop.resultWidth}×${crop.resultHeight}) for an exact 9:16 frame.`}
+          ? `zoom in until the frame is about ${crop.resultWidth}×${crop.resultHeight} (roughly ${crop.cropEachSidePx}px off each side) for an exact 9:16 frame.`
+          : `zoom in until the frame is about ${crop.resultWidth}×${crop.resultHeight} (roughly ${crop.cropEachSidePx}px off top and bottom) for an exact 9:16 frame.`}
       </p>
       <p className="text-subtitle">
         Other Shorts requirements (like length limits) change over time —

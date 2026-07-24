@@ -161,6 +161,13 @@ export type UploadedClip = {
   sourceDurationInFrames: number | null;
   sourceWidth: number | null;
   sourceHeight: number | null;
+  // Phase 11 (extended) — manual crop/zoom/pan. Always initialized
+  // immediately (1 / 0 / 0, meaning "no crop") since — unlike duration and
+  // resolution — these don't depend on reading the file at all, so there's
+  // no null/loading state to represent.
+  cropZoom: number;
+  cropOffsetX: number;
+  cropOffsetY: number;
 };
 
 export type PlayingOrderMode = "manual" | "ascending" | "descending" | "shuffle";
@@ -560,6 +567,97 @@ const StickerEditor: React.FC<{
 };
 
 /**
+ * Phase 11 (extended) — crop/zoom/pan controls, shown on every clip
+ * regardless of orientation (not just non-vertical ones) — cropping is
+ * something you might want even on already-vertical footage (e.g.
+ * punching in past a shoulder, or reframing off-center subject), so it's
+ * never gated behind the verticality check. Pan only does anything once
+ * zoomed in — there's no "spare" image outside the frame to pan into at
+ * zoom 1 — so the pan sliders are disabled until then.
+ */
+const ClipCropControls: React.FC<{
+  cropZoom: number;
+  cropOffsetX: number;
+  cropOffsetY: number;
+  onChange: (
+    cropZoom: number,
+    cropOffsetX: number,
+    cropOffsetY: number,
+  ) => void;
+}> = ({ cropZoom, cropOffsetX, cropOffsetY, onChange }) => {
+  const isCropped = cropZoom > 1 || cropOffsetX !== 0 || cropOffsetY !== 0;
+  const canPan = cropZoom > 1;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-[11px] text-subtitle">
+        <span>Crop / zoom (works on any clip, vertical or not)</span>
+        {isCropped ? (
+          <button
+            type="button"
+            onClick={() => onChange(1, 0, 0)}
+            className="text-accent hover:underline"
+          >
+            Reset crop
+          </button>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-3 control-group">
+        <label className="flex items-center gap-1.5 text-xs text-subtitle">
+          Zoom
+          <input
+            type="range"
+            min={1}
+            max={3}
+            step={0.05}
+            value={cropZoom}
+            onChange={(e) =>
+              onChange(Number(e.target.value), cropOffsetX, cropOffsetY)
+            }
+            className="w-20"
+          />
+          <span className="font-mono-tabular w-10">
+            {cropZoom.toFixed(2)}x
+          </span>
+        </label>
+        <label
+          className={`flex items-center gap-1.5 text-xs ${canPan ? "text-subtitle" : "text-disabled-text-color"}`}
+        >
+          Pan X
+          <input
+            type="range"
+            min={-100}
+            max={100}
+            value={cropOffsetX}
+            disabled={!canPan}
+            onChange={(e) =>
+              onChange(cropZoom, Number(e.target.value), cropOffsetY)
+            }
+            className="w-20"
+          />
+        </label>
+        <label
+          className={`flex items-center gap-1.5 text-xs ${canPan ? "text-subtitle" : "text-disabled-text-color"}`}
+        >
+          Pan Y
+          <input
+            type="range"
+            min={-100}
+            max={100}
+            value={cropOffsetY}
+            disabled={!canPan}
+            onChange={(e) =>
+              onChange(cropZoom, cropOffsetX, Number(e.target.value))
+            }
+            className="w-20"
+          />
+        </label>
+      </div>
+    </div>
+  );
+};
+
+/**
  * A single draggable row in the clip list. Split out from the main
  * component because useSortable() must be called once per draggable item,
  * not once for the whole list.
@@ -581,6 +679,12 @@ const SortableClipRow: React.FC<{
   onArmStickerPlacement: (id: string, emoji: string) => void;
   onRequestRemove: (id: string) => void;
   onTrimChange: (id: string, trimStartFrame: number, trimEndFrame: number) => void;
+  onCropChange: (
+    id: string,
+    cropZoom: number,
+    cropOffsetX: number,
+    cropOffsetY: number,
+  ) => void;
 }> = ({
   clip,
   clipCount,
@@ -598,6 +702,7 @@ const SortableClipRow: React.FC<{
   onArmStickerPlacement,
   onRequestRemove,
   onTrimChange,
+  onCropChange,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: clip.id, disabled: !dragEnabled });
@@ -718,6 +823,14 @@ const SortableClipRow: React.FC<{
         {clip.sourceWidth !== null && clip.sourceHeight !== null ? (
           <VerticalityCheck width={clip.sourceWidth} height={clip.sourceHeight} />
         ) : null}
+        <ClipCropControls
+          cropZoom={clip.cropZoom}
+          cropOffsetX={clip.cropOffsetX}
+          cropOffsetY={clip.cropOffsetY}
+          onChange={(zoom, offsetX, offsetY) =>
+            onCropChange(clip.id, zoom, offsetX, offsetY)
+          }
+        />
       </div>
 
       <div className="flex flex-col gap-3 border-t border-unfocused-border-color pt-3">
@@ -931,6 +1044,9 @@ export const ClipUploader = forwardRef<
         sourceDurationInFrames: null,
         sourceWidth: null,
         sourceHeight: null,
+        cropZoom: 1,
+        cropOffsetX: 0,
+        cropOffsetY: 0,
       }));
 
       setClips(newClips);
@@ -1165,6 +1281,27 @@ export const ClipUploader = forwardRef<
     [],
   );
 
+  // Phase 11 (extended) — manual crop/zoom/pan, independent of trim and
+  // available regardless of the clip's orientation (see ClipVideo in
+  // Main.tsx for how cropZoom > 1 overrides the automatic pad).
+  const handleCropChange = useCallback(
+    (
+      id: string,
+      cropZoom: number,
+      cropOffsetX: number,
+      cropOffsetY: number,
+    ) => {
+      setClips((prevClips) =>
+        prevClips.map((clip) =>
+          clip.id === id
+            ? { ...clip, cropZoom, cropOffsetX, cropOffsetY }
+            : clip,
+        ),
+      );
+    },
+    [],
+  );
+
   // The one imperative entry point page.tsx uses after a placement click
   // on the preview — see the ClipUploaderHandle comment above for why this
   // has to be a ref rather than a normal prop.
@@ -1368,6 +1505,7 @@ export const ClipUploader = forwardRef<
                     onStickersChange={handleStickersChange}
                     onArmStickerPlacement={onArmStickerPlacement}
                     onTrimChange={handleTrimChange}
+                    onCropChange={handleCropChange}
                     onRequestRemove={(id) =>
                       setPendingDeleteClip(
                         clips.find((c) => c.id === id) ?? null,
