@@ -118,21 +118,20 @@ export const ClipSchema = z.object({
   // stretched or cropped. The source file itself is never modified.
   sourceWidth: z.number(),
   sourceHeight: z.number(),
-  // Phase 11 (extended) — manual crop/zoom/pan, available on every clip
-  // regardless of orientation, not just non-vertical ones. cropZoom === 1
-  // (the default) means "untouched" — Main.tsx's ClipVideo falls back to
-  // its automatic behavior (plain cover for vertical footage, blurred-pad
-  // for non-vertical). Setting cropZoom above 1 means the person has
-  // taken over framing manually, and that always wins over the automatic
-  // pad — even for a non-vertical clip — so cropping is never gated
-  // behind a clip failing the verticality check.
-  cropZoom: z.number(),
-  // Pan, as a percent of the available slack at the current zoom/rotation
-  // (so it feels proportional at any zoom level, and ±100 always means
-  // "panned all the way to the edge"). 0 = centered. Only meaningful once
-  // cropZoom > 1 — there's no "spare" image to pan into otherwise.
-  cropOffsetX: z.number(),
-  cropOffsetY: z.number(),
+  // Phase 11 (extended, redesigned) — independent 4-directional crop.
+  // Each is a percent (0-45) of the frame cut away from that specific
+  // edge, so the person can crop more off the left than the right, more
+  // off the top than the bottom, etc. — a genuinely asymmetric crop, not
+  // a single "zoom into a centered box" value applied the same to every
+  // side. 0/0/0/0 (the default) means "no crop" — Main.tsx's ClipVideo
+  // falls back to its automatic behavior (plain cover for vertical
+  // footage, blurred-pad for non-vertical). Any inset above 0 means the
+  // person has taken over framing manually, and that always wins over the
+  // automatic pad — even for a non-vertical clip.
+  cropInsetTop: z.number(),
+  cropInsetBottom: z.number(),
+  cropInsetLeft: z.number(),
+  cropInsetRight: z.number(),
   // Rotation in degrees (-180 to 180), for straightening a tilted shot or
   // reorienting footage that was recorded sideways/upside down. Whenever
   // this is non-zero, an additional scale is applied automatically (see
@@ -372,6 +371,19 @@ export const VOICE_OVER_DEFAULT_DUCK_WINDOW_SECONDS = 4;
 export const DEFAULT_ORIGINAL_AUDIO_VOLUME = 1;
 export const MAX_ORIGINAL_AUDIO_VOLUME = 2;
 
+// Phase 11 (extended) — crops the *final composited video* (every clip,
+// the ranking list, the header — everything), as opposed to ClipSchema's
+// crop fields which only affect one clip's own footage. Same 4-directional
+// independent-edge model as the per-clip crop, no rotation option (the
+// whole canvas being tilted isn't a real use case the way straightening
+// one clip is).
+export const GlobalCropSchema = z.object({
+  top: z.number(),
+  bottom: z.number(),
+  left: z.number(),
+  right: z.number(),
+});
+
 export const CompositionProps = z.object({
   clips: z.array(ClipSchema),
   header: HeaderSchema,
@@ -379,6 +391,7 @@ export const CompositionProps = z.object({
   music: MusicSchema,
   voiceOvers: z.array(VoiceOverSchema),
   originalAudioVolume: z.number(),
+  globalCrop: GlobalCropSchema,
 });
 
 export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
@@ -399,6 +412,7 @@ export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
   music: defaultMusic,
   voiceOvers: [],
   originalAudioVolume: DEFAULT_ORIGINAL_AUDIO_VOLUME,
+  globalCrop: { top: 0, bottom: 0, left: 0, right: 0 },
 };
 
 // How many seconds the header stays on screen when durationMode is
@@ -443,12 +457,12 @@ export const isClipVertical = (width: number, height: number): boolean => {
   );
 };
 
-// Phase 11 (extended) — manual crop/zoom bounds. 1 = no crop (fit as-is);
-// 3 is a generous enough ceiling to punch into a shoulder-level shot
-// without the source's own resolution starting to look soft at 1080px
-// wide.
-export const CLIP_CROP_MIN_ZOOM = 1;
-export const CLIP_CROP_MAX_ZOOM = 3;
+// Phase 11 (extended, redesigned) — how far any single edge can be cropped
+// in, as a percent of the frame. Individual editors additionally clamp a
+// pair of opposite edges (e.g. left + right) to never exceed 90 combined,
+// so at least 10% of the frame always remains rather than collapsing to
+// zero width/height.
+export const CLIP_CROP_MAX_INSET_PERCENT = 45;
 
 /**
  * How much extra uniform scale a clip needs, on top of its own zoom, so
@@ -478,6 +492,68 @@ export const getRotationCoverScale = (
   const scaleForWidth = cos + sin / aspect;
   const scaleForHeight = aspect * sin + cos;
   return Math.max(scaleForWidth, scaleForHeight);
+};
+
+export type CropTransform = {
+  scale: number;
+  translateXPercent: number;
+  translateYPercent: number;
+};
+
+/**
+ * Computes the scale + translate for an independently 4-directional-cropped
+ * rectangle — insetTop/Bottom/Left/Right, each a percent (0-45ish) of the
+ * frame cut away from that specific edge — so the remaining rectangle fills
+ * the frame with no distortion, optionally combined with a rotation.
+ *
+ * The crop rectangle is scaled *uniformly* (the same factor on both axes,
+ * never stretched) — whichever axis needs more scale-up to fully cover the
+ * frame determines the scale, so the less-constrained axis ends up showing
+ * a little more than its raw inset number implies. This is the same
+ * tradeoff any crop tool makes when fitting an arbitrary rectangle into a
+ * fixed-aspect output: honest independent-edge control, without ever
+ * distorting the footage to force an exact fit.
+ *
+ * Duplicated as a local copy in ClipCropBox.tsx (same reasoning as
+ * getRotationCoverScale above) so the upload-time crop preview matches
+ * this exactly without importing the render pipeline.
+ */
+export const computeInsetCropTransform = (
+  insetTop: number,
+  insetBottom: number,
+  insetLeft: number,
+  insetRight: number,
+  rotationDeg: number = 0,
+  aspect: number = VIDEO_WIDTH / VIDEO_HEIGHT,
+): CropTransform => {
+  const cropWidthPercent = Math.max(1, 100 - insetLeft - insetRight);
+  const cropHeightPercent = Math.max(1, 100 - insetTop - insetBottom);
+  const cropCenterX = insetLeft + cropWidthPercent / 2;
+  const cropCenterY = insetTop + cropHeightPercent / 2;
+  const cropScale = Math.max(
+    100 / cropWidthPercent,
+    100 / cropHeightPercent,
+  );
+  const rotationCoverScale = getRotationCoverScale(rotationDeg, aspect);
+  const scale = cropScale * rotationCoverScale;
+
+  // The translate needed to re-center the crop rectangle's own center at
+  // the frame's center, expressed in the element's own percent-of-box
+  // units (matching how CSS resolves percentage `translate` values) —
+  // derived by requiring the crop-rect-center to map back to (50, 50)
+  // under the combined scale+rotate+translate transform. When rotationDeg
+  // is 0, this reduces to a plain scale*(center - cropCenter) offset.
+  const dx0 = scale * (50 - cropCenterX);
+  const dy0 = scale * (50 - cropCenterY);
+  const rad = (rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  return {
+    scale,
+    translateXPercent: dx0 * cos - dy0 * sin,
+    translateYPercent: dx0 * sin + dy0 * cos,
+  };
 };
 
 // Fallback only — used before any clips exist. Real total duration is

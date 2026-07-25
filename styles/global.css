@@ -506,7 +506,7 @@ input[type="file"]::file-selector-button:hover {
 .clip-crop-box {
   position: relative;
   width: 100%;
-  max-width: 150px;
+  max-width: 190px;
   aspect-ratio: 1080 / 1920;
   margin: 0 auto;
   border-radius: var(--radius-geist);
@@ -525,31 +525,58 @@ input[type="file"]::file-selector-button:hover {
 }
 .clip-crop-box-selection {
   position: absolute;
-  border: 2px solid var(--accent);
+  border: 2px dashed var(--accent);
   border-radius: 3px;
-  cursor: move;
+  /* The selection body itself isn't draggable anymore — each edge is its
+     own independent handle (see .clip-crop-box-edge-* below), so a click
+     in the middle shouldn't do anything. */
+  pointer-events: none;
   /* The oversized, semi-transparent shadow is what visually dims
      everything outside the selection — clipped by the container's own
      overflow: hidden above. */
   box-shadow: 0 0 0 2000px rgba(10, 11, 13, 0.6);
 }
-.clip-crop-box-handle {
+.clip-crop-box-edge {
   position: absolute;
-  right: -6px;
-  bottom: -6px;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
   background: var(--accent);
   border: 2px solid var(--accent-contrast);
+  border-radius: 999px;
   padding: 0;
-  cursor: nwse-resize;
+  pointer-events: auto;
   touch-action: none;
 }
-.clip-crop-box-handle:hover,
-.clip-crop-box-handle:focus-visible {
+.clip-crop-box-edge:hover,
+.clip-crop-box-edge:focus-visible {
   filter: brightness(1.12);
   outline: none;
+}
+.clip-crop-box-edge-top,
+.clip-crop-box-edge-bottom {
+  left: 50%;
+  width: 28px;
+  height: 10px;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+.clip-crop-box-edge-top {
+  top: -5px;
+}
+.clip-crop-box-edge-bottom {
+  bottom: -5px;
+}
+.clip-crop-box-edge-left,
+.clip-crop-box-edge-right {
+  top: 50%;
+  width: 10px;
+  height: 28px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+.clip-crop-box-edge-left {
+  left: -5px;
+}
+.clip-crop-box-edge-right {
+  right: -5px;
 }
 
 /*

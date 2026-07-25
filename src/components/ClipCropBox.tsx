@@ -2,13 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// Phase 11 (extended) — a local mirror of the target frame's aspect ratio
-// and the rotation-cover-scale formula. Same reasoning as ClipUploader's
-// own FPS constant: this upload-time preview doesn't need to import the
-// Remotion render pipeline (types/constants.ts's getRotationCoverScale) —
-// duplicating one small formula keeps the upload UI decoupled from it. If
-// VIDEO_WIDTH/VIDEO_HEIGHT or the formula in types/constants.ts ever
-// change, update this copy too.
+// Phase 11 (extended, redesigned) — local mirror of the render pipeline's
+// rotation-cover-scale formula. Same reasoning as ClipUploader's own FPS
+// constant: this upload-time preview doesn't need to import the Remotion
+// render pipeline (types/constants.ts) — duplicating this small formula
+// keeps the upload UI decoupled from it. If the version in
+// types/constants.ts ever changes, update this copy too.
 const FRAME_ASPECT = 1080 / 1920; // 9:16
 
 const getRotationCoverScale = (rotationDeg: number): number => {
@@ -21,30 +20,35 @@ const getRotationCoverScale = (rotationDeg: number): number => {
   return Math.max(scaleForWidth, scaleForHeight);
 };
 
+const MAX_INSET = 45;
+
+type Edge = "top" | "bottom" | "left" | "right";
+
 type DragState = {
-  mode: "move" | "resize";
+  edge: Edge;
   startClientX: number;
   startClientY: number;
-  startZoom: number;
-  startOffsetX: number;
-  startOffsetY: number;
+  startInset: number;
+};
+
+export type CropInsets = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
 };
 
 /**
- * Phase 11 (extended) — a visual, drag-to-crop selector, the same basic
- * interaction as cropping a still image: the video is shown at its
- * "zoom 1" reference framing (already straightened by rotationDeg, if
- * set), and a bordered selection box represents what will actually be
- * kept. Dragging the box pans (cropOffsetX/Y); dragging its corner handle
- * resizes it, which is the same thing as changing cropZoom — a bigger box
- * means less zoom, a smaller box means more.
+ * Phase 11 (extended, redesigned) — a visual, drag-to-crop selector with
+ * four independent edges: the video is shown at its "no crop" reference
+ * framing (already straightened by rotationDeg, if set), and a dashed
+ * rectangle represents what will actually be kept. Each of the 4 edges is
+ * its own drag handle — dragging the top edge only ever changes
+ * insetTop, dragging the left edge only ever changes insetLeft, and so
+ * on — so the crop can be genuinely asymmetric (more off one side than
+ * its opposite), unlike a single-corner "zoom into a centered box" tool.
  *
- * The box is always locked to the output's own 9:16 aspect ratio (there's
- * no free-form crop shape here, since every clip renders into the same
- * fixed vertical canvas) — so one corner handle is enough; there's only
- * one real degree of freedom to resize.
- *
- * This sits alongside — not instead of — the numeric zoom/pan sliders in
+ * This sits alongside — not instead of — the numeric sliders in
  * ClipUploader.tsx: dragging is faster and more intuitive, but the
  * sliders remain as a precise, keyboard-accessible way to set the same
  * values, since the drag handles here don't have a keyboard equivalent.
@@ -53,23 +57,9 @@ export const ClipCropBox: React.FC<{
   src: string;
   previewTimeSeconds: number;
   rotationDeg: number;
-  cropZoom: number;
-  cropOffsetX: number;
-  cropOffsetY: number;
-  onChange: (
-    cropZoom: number,
-    cropOffsetX: number,
-    cropOffsetY: number,
-  ) => void;
-}> = ({
-  src,
-  previewTimeSeconds,
-  rotationDeg,
-  cropZoom,
-  cropOffsetX,
-  cropOffsetY,
-  onChange,
-}) => {
+  insets: CropInsets;
+  onChange: (insets: CropInsets) => void;
+}> = ({ src, previewTimeSeconds, rotationDeg, insets, onChange }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -105,27 +95,37 @@ export const ClipCropBox: React.FC<{
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      const dxPercent = ((e.clientX - drag.startClientX) / rect.width) * 100;
-      const dyPercent = ((e.clientY - drag.startClientY) / rect.height) * 100;
 
-      if (drag.mode === "move") {
-        const availableSlackPercent = (100 - 100 / drag.startZoom) / 2;
-        if (availableSlackPercent <= 0) return;
-        const nextOffsetX =
-          drag.startOffsetX + (dxPercent / availableSlackPercent) * 100;
-        const nextOffsetY =
-          drag.startOffsetY + (dyPercent / availableSlackPercent) * 100;
-        onChange(
-          drag.startZoom,
-          Math.max(-100, Math.min(100, nextOffsetX)),
-          Math.max(-100, Math.min(100, nextOffsetY)),
+      if (drag.edge === "top" || drag.edge === "bottom") {
+        const dyPercent =
+          ((e.clientY - drag.startClientY) / rect.height) * 100;
+        // Dragging the top edge down (positive dy) increases insetTop;
+        // dragging the bottom edge up (negative dy) increases insetBottom.
+        const rawDelta = drag.edge === "top" ? dyPercent : -dyPercent;
+        const oppositeInset =
+          drag.edge === "top" ? insets.bottom : insets.top;
+        const nextInset = Math.max(
+          0,
+          Math.min(
+            MAX_INSET,
+            Math.min(90 - oppositeInset, drag.startInset + rawDelta),
+          ),
         );
+        onChange({ ...insets, [drag.edge]: nextInset });
       } else {
-        // Dragging the corner outward should enlarge the box (zoom out);
-        // dragging inward shrinks it (zoom in) — hence the minus sign.
-        const delta = (dxPercent + dyPercent) / 2;
-        const nextZoom = Math.max(1, Math.min(3, drag.startZoom - delta / 25));
-        onChange(nextZoom, drag.startOffsetX, drag.startOffsetY);
+        const dxPercent =
+          ((e.clientX - drag.startClientX) / rect.width) * 100;
+        const rawDelta = drag.edge === "left" ? dxPercent : -dxPercent;
+        const oppositeInset =
+          drag.edge === "left" ? insets.right : insets.left;
+        const nextInset = Math.max(
+          0,
+          Math.min(
+            MAX_INSET,
+            Math.min(90 - oppositeInset, drag.startInset + rawDelta),
+          ),
+        );
+        onChange({ ...insets, [drag.edge]: nextInset });
       }
     };
     const handlePointerUp = () => setDrag(null);
@@ -136,15 +136,26 @@ export const ClipCropBox: React.FC<{
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [drag, onChange]);
+    // insets is intentionally in deps: each move handler closes over the
+    // insets object from the render when the drag started, but onChange
+    // calls need the freshest *other 3* values, which only change if the
+    // person somehow edits a slider mid-drag — re-subscribing on insets
+    // change keeps that edge case correct without adding real overhead.
+  }, [drag, insets, onChange]);
 
-  const boxSizePercent = 100 / cropZoom;
-  const availableSlackPercent = (100 - boxSizePercent) / 2;
-  const boxLeftPercent =
-    availableSlackPercent + (cropOffsetX / 100) * availableSlackPercent;
-  const boxTopPercent =
-    availableSlackPercent + (cropOffsetY / 100) * availableSlackPercent;
   const rotationCoverScale = getRotationCoverScale(rotationDeg);
+  const startDrag =
+    (edge: Edge, startInset: number) =>
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDrag({
+        edge,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startInset,
+      });
+    };
 
   return (
     <div ref={containerRef} className="clip-crop-box">
@@ -165,39 +176,35 @@ export const ClipCropBox: React.FC<{
       <div
         className="clip-crop-box-selection"
         style={{
-          left: `${boxLeftPercent}%`,
-          top: `${boxTopPercent}%`,
-          width: `${boxSizePercent}%`,
-          height: `${boxSizePercent}%`,
-        }}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          setDrag({
-            mode: "move",
-            startClientX: e.clientX,
-            startClientY: e.clientY,
-            startZoom: cropZoom,
-            startOffsetX: cropOffsetX,
-            startOffsetY: cropOffsetY,
-          });
+          left: `${insets.left}%`,
+          top: `${insets.top}%`,
+          right: `${insets.right}%`,
+          bottom: `${insets.bottom}%`,
         }}
       >
         <button
           type="button"
-          className="clip-crop-box-handle"
-          aria-label="Drag to resize crop (zoom)"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setDrag({
-              mode: "resize",
-              startClientX: e.clientX,
-              startClientY: e.clientY,
-              startZoom: cropZoom,
-              startOffsetX: cropOffsetX,
-              startOffsetY: cropOffsetY,
-            });
-          }}
+          className="clip-crop-box-edge clip-crop-box-edge-top"
+          aria-label="Drag to crop from the top"
+          onPointerDown={startDrag("top", insets.top)}
+        />
+        <button
+          type="button"
+          className="clip-crop-box-edge clip-crop-box-edge-bottom"
+          aria-label="Drag to crop from the bottom"
+          onPointerDown={startDrag("bottom", insets.bottom)}
+        />
+        <button
+          type="button"
+          className="clip-crop-box-edge clip-crop-box-edge-left"
+          aria-label="Drag to crop from the left"
+          onPointerDown={startDrag("left", insets.left)}
+        />
+        <button
+          type="button"
+          className="clip-crop-box-edge clip-crop-box-edge-right"
+          aria-label="Drag to crop from the right"
+          onPointerDown={startDrag("right", insets.right)}
         />
       </div>
     </div>

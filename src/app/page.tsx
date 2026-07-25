@@ -7,6 +7,7 @@ import { z } from "zod";
 import {
   CompositionProps,
   defaultMyCompProps,
+  GlobalCropSchema,
   HeaderSchema,
   RankingListStyleSchema,
   STICKER_DEFAULT_DURATION_SECONDS,
@@ -23,6 +24,7 @@ import {
   UploadedClip,
 } from "../components/ClipUploader";
 import { HeaderEditor } from "../components/HeaderEditor";
+import { GlobalCropEditor } from "../components/GlobalCropEditor";
 import { RankingListStyleEditor } from "../components/RankingListStyleEditor";
 import { RenderControls } from "../components/RenderControls";
 import { Section } from "../components/Section";
@@ -43,6 +45,12 @@ const Home: NextPage = () => {
   const [rankingListStyle, setRankingListStyle] = useState<
     z.infer<typeof RankingListStyleSchema>
   >(defaultMyCompProps.rankingListStyle);
+  // Phase 11 (extended) — crops the entire final composited video, lifted
+  // the same pattern as header/rankingListStyle: the editor owns the
+  // actual editing state, this just holds the latest reported value.
+  const [globalCrop, setGlobalCrop] = useState<
+    z.infer<typeof GlobalCropSchema>
+  >(defaultMyCompProps.globalCrop);
 
   // Phase 12 — same lifted pattern again: AudioEditor owns the actual
   // music/voice-over editing state (including in-progress uploads), this
@@ -132,13 +140,15 @@ const Home: NextPage = () => {
           sourceDurationInFrames: clip.sourceDurationInFrames,
           sourceWidth: clip.sourceWidth,
           sourceHeight: clip.sourceHeight,
-          cropZoom: clip.cropZoom,
-          cropOffsetX: clip.cropOffsetX,
-          cropOffsetY: clip.cropOffsetY,
+          cropInsetTop: clip.cropInsetTop,
+          cropInsetBottom: clip.cropInsetBottom,
+          cropInsetLeft: clip.cropInsetLeft,
+          cropInsetRight: clip.cropInsetRight,
           cropRotationDeg: clip.cropRotationDeg,
         })),
       header,
       rankingListStyle,
+      globalCrop,
       // Only a real, uploaded track with a known duration counts as
       // "music" — while a file is still uploading or its duration is
       // still being read, this is the same silent default as no music at
@@ -176,6 +186,7 @@ const Home: NextPage = () => {
     uploadedClips,
     header,
     rankingListStyle,
+    globalCrop,
     music,
     voiceOvers,
     originalAudioVolume,
@@ -378,6 +389,13 @@ const Home: NextPage = () => {
                 onOriginalAudioVolumeChange={setOriginalAudioVolume}
                 getCurrentPreviewSeconds={getCurrentPreviewSeconds}
               />
+            </Section>
+            <Section
+              label="Final crop"
+              description="Crops the whole exported video, on top of any per-clip crop"
+              defaultOpen={false}
+            >
+              <GlobalCropEditor onCropChange={setGlobalCrop} />
             </Section>
             <Section label="Export" description="Render the final video locally" defaultOpen={false}>
               <RenderControls inputProps={inputProps}></RenderControls>

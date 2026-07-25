@@ -11,7 +11,7 @@ import { z } from "zod";
 import {
   CompositionProps,
   HEADER_INTRO_SECONDS,
-  getRotationCoverScale,
+  computeInsetCropTransform,
   isClipVertical,
 } from "../../../types/constants";
 import {
@@ -360,10 +360,10 @@ const getFinalClipVolume = (
  * copy is muted so the clip's audio only plays once, from the foreground
  * copy.
  *
- * A manual crop (cropZoom > 1 or cropRotationDeg !== 0) always wins over
- * the automatic pad, even for a non-vertical clip — cropping and rotation
- * are available on every clip regardless of orientation, not gated behind
- * failing the verticality check.
+ * A manual crop (any of the 4 insets > 0, or cropRotationDeg !== 0) always
+ * wins over the automatic pad, even for a non-vertical clip — cropping and
+ * rotation are available on every clip regardless of orientation, not
+ * gated behind failing the verticality check.
  *
  * Phase 12 — the clip's own (non-muted) audio is volume-automated per
  * frame via getFinalClipVolume above, so it reflects both the project's
@@ -382,25 +382,26 @@ const ClipVideo: React.FC<{
 }> = ({ clip, voiceOvers, originalAudioVolume }) => {
   const volume = (localFrame: number) =>
     getFinalClipVolume(clip.from + localFrame, voiceOvers, originalAudioVolume);
-  const hasManualCrop = clip.cropZoom > 1 || clip.cropRotationDeg !== 0;
+  const hasManualCrop =
+    clip.cropInsetTop > 0 ||
+    clip.cropInsetBottom > 0 ||
+    clip.cropInsetLeft > 0 ||
+    clip.cropInsetRight > 0 ||
+    clip.cropRotationDeg !== 0;
   const vertical = isClipVertical(clip.sourceWidth, clip.sourceHeight);
 
   if (hasManualCrop || vertical) {
     let transform: string | undefined;
     if (hasManualCrop) {
-      // Rotating a clip enlarges what "fully covering the frame" requires
-      // (see getRotationCoverScale) — folded into the zoom so a rotated
-      // clip never shows blank corners. Pan is expressed as a percent of
-      // the *available slack* at this effective zoom, and kept outermost
-      // in the transform list so it always shifts the frame up/down/
-      // left/right on screen, regardless of the rotation angle.
-      const rotationCoverScale = getRotationCoverScale(clip.cropRotationDeg);
-      const effectiveZoom = clip.cropZoom * rotationCoverScale;
-      const translateXPercent =
-        ((clip.cropOffsetX / 100) * (effectiveZoom - 1) * 100) / 2;
-      const translateYPercent =
-        ((clip.cropOffsetY / 100) * (effectiveZoom - 1) * 100) / 2;
-      transform = `translate(${translateXPercent}%, ${translateYPercent}%) rotate(${clip.cropRotationDeg}deg) scale(${effectiveZoom})`;
+      const { scale, translateXPercent, translateYPercent } =
+        computeInsetCropTransform(
+          clip.cropInsetTop,
+          clip.cropInsetBottom,
+          clip.cropInsetLeft,
+          clip.cropInsetRight,
+          clip.cropRotationDeg,
+        );
+      transform = `translate(${translateXPercent}%, ${translateYPercent}%) rotate(${clip.cropRotationDeg}deg) scale(${scale})`;
     }
     return (
       <Video
@@ -796,6 +797,7 @@ export const Main = ({
   music,
   voiceOvers,
   originalAudioVolume,
+  globalCrop,
 }: z.infer<typeof CompositionProps>) => {
   const clipRanges = computeClipRanges(clips);
   const { width } = useVideoConfig();
@@ -809,51 +811,82 @@ export const Main = ({
   // render exactly as they did before Phase 8.
   const videoTrackOffset = getExtendCanvasExtraHeight(header, width);
 
+  // Phase 11 (extended) — crops the entire final composited video (every
+  // clip, the ranking list, the header — everything visual), as opposed to
+  // each clip's own individual crop above which only affects that one
+  // clip's footage. Same shared transform function, no rotation option
+  // here. When all four insets are 0 (the default) this is scale(1)
+  // translate(0,0) — a no-op, identical to before this feature existed.
+  // Audio (MusicTrack/VoiceOverTrack below) is deliberately kept *outside*
+  // this transformed wrapper — cropping is a visual concept, and nesting
+  // <Audio> inside a transformed element has no meaning for it.
+  const hasGlobalCrop =
+    globalCrop.top > 0 ||
+    globalCrop.bottom > 0 ||
+    globalCrop.left > 0 ||
+    globalCrop.right > 0;
+  const globalCropTransform = computeInsetCropTransform(
+    globalCrop.top,
+    globalCrop.bottom,
+    globalCrop.left,
+    globalCrop.right,
+  );
+
   return (
-    <AbsoluteFill className="bg-black">
-      <AbsoluteFill style={{ top: videoTrackOffset }}>
-        {clipRanges.map((clip) => (
-          <Sequence
-            key={clip.id}
-            from={clip.from}
-            durationInFrames={clip.to - clip.from}
-          >
-            <ClipVideo
-              clip={clip}
-              voiceOvers={voiceOvers}
-              originalAudioVolume={originalAudioVolume}
-            />
-            {clip.stickers.map((sticker) => {
-              // A nested <Sequence>'s `from` is relative to its parent
-              // Sequence's own local frame 0 — i.e. exactly the "0 = this
-              // clip's own start" convention stickers are stored in. No
-              // manual offset math needed here at all.
-              const durationInFrames = Math.max(
-                1,
-                sticker.endFrame - sticker.startFrame,
-              );
-              return (
-                <Sequence
-                  key={sticker.id}
-                  from={sticker.startFrame}
-                  durationInFrames={durationInFrames}
-                >
-                  <StickerOverlay sticker={sticker} />
-                </Sequence>
-              );
-            })}
-          </Sequence>
-        ))}
+    <AbsoluteFill className="bg-black" style={{ overflow: "hidden" }}>
+      <AbsoluteFill
+        style={
+          hasGlobalCrop
+            ? {
+                transform: `translate(${globalCropTransform.translateXPercent}%, ${globalCropTransform.translateYPercent}%) scale(${globalCropTransform.scale})`,
+              }
+            : undefined
+        }
+      >
+        <AbsoluteFill style={{ top: videoTrackOffset }}>
+          {clipRanges.map((clip) => (
+            <Sequence
+              key={clip.id}
+              from={clip.from}
+              durationInFrames={clip.to - clip.from}
+            >
+              <ClipVideo
+                clip={clip}
+                voiceOvers={voiceOvers}
+                originalAudioVolume={originalAudioVolume}
+              />
+              {clip.stickers.map((sticker) => {
+                // A nested <Sequence>'s `from` is relative to its parent
+                // Sequence's own local frame 0 — i.e. exactly the "0 = this
+                // clip's own start" convention stickers are stored in. No
+                // manual offset math needed here at all.
+                const durationInFrames = Math.max(
+                  1,
+                  sticker.endFrame - sticker.startFrame,
+                );
+                return (
+                  <Sequence
+                    key={sticker.id}
+                    from={sticker.startFrame}
+                    durationInFrames={durationInFrames}
+                  >
+                    <StickerOverlay sticker={sticker} />
+                  </Sequence>
+                );
+              })}
+            </Sequence>
+          ))}
+        </AbsoluteFill>
+        <HeaderShadeBackdrop header={header} canvasWidth={width} />
+        <AbsoluteFill style={{ top: videoTrackOffset }}>
+          <RankingList clipRanges={clipRanges} listStyle={rankingListStyle} />
+        </AbsoluteFill>
+        <Header header={header} />
       </AbsoluteFill>
       <MusicTrack music={music} clipRanges={clipRanges} />
       {voiceOvers.map((voiceOver) => (
         <VoiceOverTrack key={voiceOver.id} voiceOver={voiceOver} />
       ))}
-      <HeaderShadeBackdrop header={header} canvasWidth={width} />
-      <AbsoluteFill style={{ top: videoTrackOffset }}>
-        <RankingList clipRanges={clipRanges} listStyle={rankingListStyle} />
-      </AbsoluteFill>
-      <Header header={header} />
     </AbsoluteFill>
   );
 };

@@ -23,7 +23,7 @@ import {
   useState,
 } from "react";
 import { Button } from "./Button";
-import { ClipCropBox } from "./ClipCropBox";
+import { ClipCropBox, CropInsets } from "./ClipCropBox";
 import { ClipTrimmer } from "./ClipTrimmer";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { isSourceVertical, VerticalityCheck } from "./VerticalityCheck";
@@ -162,13 +162,14 @@ export type UploadedClip = {
   sourceDurationInFrames: number | null;
   sourceWidth: number | null;
   sourceHeight: number | null;
-  // Phase 11 (extended) — manual crop/zoom/pan. Always initialized
-  // immediately (1 / 0 / 0, meaning "no crop") since — unlike duration and
-  // resolution — these don't depend on reading the file at all, so there's
-  // no null/loading state to represent.
-  cropZoom: number;
-  cropOffsetX: number;
-  cropOffsetY: number;
+  // Phase 11 (extended, redesigned) — independent 4-directional crop.
+  // Always initialized immediately (0/0/0/0, meaning "no crop") since —
+  // unlike duration and resolution — these don't depend on reading the
+  // file at all, so there's no null/loading state to represent.
+  cropInsetTop: number;
+  cropInsetBottom: number;
+  cropInsetLeft: number;
+  cropInsetRight: number;
   // Phase 11 (extended) — rotation in degrees, -180 to 180. 0 = untouched.
   cropRotationDeg: number;
 };
@@ -578,36 +579,32 @@ const StickerEditor: React.FC<{
  * zoomed in — there's no "spare" image outside the frame to pan into at
  * zoom 1 — so the pan sliders are disabled until then.
  */
+const MAX_INSET = 45;
+
 const ClipCropControls: React.FC<{
   src: string;
   previewTimeSeconds: number;
-  cropZoom: number;
-  cropOffsetX: number;
-  cropOffsetY: number;
+  insets: CropInsets;
   cropRotationDeg: number;
-  onChange: (
-    cropZoom: number,
-    cropOffsetX: number,
-    cropOffsetY: number,
-  ) => void;
+  onChange: (insets: CropInsets) => void;
   onRotationChange: (cropRotationDeg: number) => void;
 }> = ({
   src,
   previewTimeSeconds,
-  cropZoom,
-  cropOffsetX,
-  cropOffsetY,
+  insets,
   cropRotationDeg,
   onChange,
   onRotationChange,
 }) => {
   const isCropped =
-    cropZoom > 1 || cropOffsetX !== 0 || cropOffsetY !== 0 ||
+    insets.top > 0 ||
+    insets.bottom > 0 ||
+    insets.left > 0 ||
+    insets.right > 0 ||
     cropRotationDeg !== 0;
-  const canPan = cropZoom > 1;
 
   const resetAll = () => {
-    onChange(1, 0, 0);
+    onChange({ top: 0, bottom: 0, left: 0, right: 0 });
     onRotationChange(0);
   };
 
@@ -619,10 +616,27 @@ const ClipCropControls: React.FC<{
     onRotationChange(next);
   };
 
+  // Clamps a single edge to [0, MAX_INSET] and also against its opposite
+  // edge so the two never sum past 90 (leaving at least 10% width/height).
+  const setInset = (edge: keyof CropInsets, value: number) => {
+    const oppositeKey: Record<keyof CropInsets, keyof CropInsets> = {
+      top: "bottom",
+      bottom: "top",
+      left: "right",
+      right: "left",
+    };
+    const opposite = insets[oppositeKey[edge]];
+    const clamped = Math.max(
+      0,
+      Math.min(MAX_INSET, Math.min(90 - opposite, value)),
+    );
+    onChange({ ...insets, [edge]: clamped });
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between text-[11px] text-subtitle">
-        <span>Crop / zoom / rotate (works on any clip, vertical or not)</span>
+        <span>Crop (4 independent edges) / rotate — works on any clip</span>
         {isCropped ? (
           <button
             type="button"
@@ -639,61 +653,66 @@ const ClipCropControls: React.FC<{
           src={src}
           previewTimeSeconds={previewTimeSeconds}
           rotationDeg={cropRotationDeg}
-          cropZoom={cropZoom}
-          cropOffsetX={cropOffsetX}
-          cropOffsetY={cropOffsetY}
+          insets={insets}
           onChange={onChange}
         />
 
         <div className="flex flex-1 flex-col gap-2.5">
           <label className="flex items-center gap-1.5 text-xs text-subtitle">
-            Zoom
+            Top
             <input
               type="range"
-              min={1}
-              max={3}
-              step={0.05}
-              value={cropZoom}
-              onChange={(e) =>
-                onChange(Number(e.target.value), cropOffsetX, cropOffsetY)
-              }
+              min={0}
+              max={MAX_INSET}
+              value={insets.top}
+              onChange={(e) => setInset("top", Number(e.target.value))}
               className="w-24"
             />
             <span className="font-mono-tabular w-10">
-              {cropZoom.toFixed(2)}x
+              {insets.top.toFixed(0)}%
             </span>
           </label>
-          <label
-            className={`flex items-center gap-1.5 text-xs ${canPan ? "text-subtitle" : "text-disabled-text-color"}`}
-          >
-            Pan X
+          <label className="flex items-center gap-1.5 text-xs text-subtitle">
+            Bottom
             <input
               type="range"
-              min={-100}
-              max={100}
-              value={cropOffsetX}
-              disabled={!canPan}
-              onChange={(e) =>
-                onChange(cropZoom, Number(e.target.value), cropOffsetY)
-              }
+              min={0}
+              max={MAX_INSET}
+              value={insets.bottom}
+              onChange={(e) => setInset("bottom", Number(e.target.value))}
               className="w-24"
             />
+            <span className="font-mono-tabular w-10">
+              {insets.bottom.toFixed(0)}%
+            </span>
           </label>
-          <label
-            className={`flex items-center gap-1.5 text-xs ${canPan ? "text-subtitle" : "text-disabled-text-color"}`}
-          >
-            Pan Y
+          <label className="flex items-center gap-1.5 text-xs text-subtitle">
+            Left
             <input
               type="range"
-              min={-100}
-              max={100}
-              value={cropOffsetY}
-              disabled={!canPan}
-              onChange={(e) =>
-                onChange(cropZoom, cropOffsetX, Number(e.target.value))
-              }
+              min={0}
+              max={MAX_INSET}
+              value={insets.left}
+              onChange={(e) => setInset("left", Number(e.target.value))}
               className="w-24"
             />
+            <span className="font-mono-tabular w-10">
+              {insets.left.toFixed(0)}%
+            </span>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-subtitle">
+            Right
+            <input
+              type="range"
+              min={0}
+              max={MAX_INSET}
+              value={insets.right}
+              onChange={(e) => setInset("right", Number(e.target.value))}
+              className="w-24"
+            />
+            <span className="font-mono-tabular w-10">
+              {insets.right.toFixed(0)}%
+            </span>
           </label>
           <div className="flex items-center gap-2">
             <label className="flex flex-1 items-center gap-1.5 text-xs text-subtitle">
@@ -743,12 +762,7 @@ const SortableClipRow: React.FC<{
   onArmStickerPlacement: (id: string, emoji: string) => void;
   onRequestRemove: (id: string) => void;
   onTrimChange: (id: string, trimStartFrame: number, trimEndFrame: number) => void;
-  onCropChange: (
-    id: string,
-    cropZoom: number,
-    cropOffsetX: number,
-    cropOffsetY: number,
-  ) => void;
+  onCropChange: (id: string, insets: CropInsets) => void;
   onRotationChange: (id: string, cropRotationDeg: number) => void;
 }> = ({
   clip,
@@ -892,13 +906,14 @@ const SortableClipRow: React.FC<{
         <ClipCropControls
           src={clip.src}
           previewTimeSeconds={clip.trimStartFrame / FPS}
-          cropZoom={clip.cropZoom}
-          cropOffsetX={clip.cropOffsetX}
-          cropOffsetY={clip.cropOffsetY}
+          insets={{
+            top: clip.cropInsetTop,
+            bottom: clip.cropInsetBottom,
+            left: clip.cropInsetLeft,
+            right: clip.cropInsetRight,
+          }}
           cropRotationDeg={clip.cropRotationDeg}
-          onChange={(zoom, offsetX, offsetY) =>
-            onCropChange(clip.id, zoom, offsetX, offsetY)
-          }
+          onChange={(insets) => onCropChange(clip.id, insets)}
           onRotationChange={(deg) => onRotationChange(clip.id, deg)}
         />
       </div>
@@ -1114,9 +1129,10 @@ export const ClipUploader = forwardRef<
         sourceDurationInFrames: null,
         sourceWidth: null,
         sourceHeight: null,
-        cropZoom: 1,
-        cropOffsetX: 0,
-        cropOffsetY: 0,
+        cropInsetTop: 0,
+        cropInsetBottom: 0,
+        cropInsetLeft: 0,
+        cropInsetRight: 0,
         cropRotationDeg: 0,
       }));
 
@@ -1352,30 +1368,43 @@ export const ClipUploader = forwardRef<
     [],
   );
 
-  // Phase 11 (extended) — manual crop/zoom/pan, independent of trim and
-  // available regardless of the clip's orientation (see ClipVideo in
-  // Main.tsx for how cropZoom > 1 overrides the automatic pad).
-  const handleCropChange = useCallback(
-    (
-      id: string,
-      cropZoom: number,
-      cropOffsetX: number,
-      cropOffsetY: number,
-    ) => {
-      setClips((prevClips) =>
-        prevClips.map((clip) =>
-          clip.id === id
-            ? { ...clip, cropZoom, cropOffsetX, cropOffsetY }
-            : clip,
-        ),
-      );
-    },
-    [],
-  );
+  // Phase 11 (extended, redesigned) — independent 4-directional crop,
+  // separate from trim and available regardless of the clip's orientation
+  // (see ClipVideo in Main.tsx for how any non-zero inset overrides the
+  // automatic pad). Re-clamps each edge against its opposite here too
+  // (not just in ClipCropControls) since this is the actual state setter —
+  // the UI-level clamp is a nicety for a responsive slider, this one is
+  // what actually guarantees the invariant holds.
+  const handleCropChange = useCallback((id: string, insets: CropInsets) => {
+    setClips((prevClips) =>
+      prevClips.map((clip) => {
+        if (clip.id !== id) {
+          return clip;
+        }
+        const top = Math.max(0, Math.min(45, insets.top));
+        const bottom = Math.max(
+          0,
+          Math.min(45, Math.min(90 - top, insets.bottom)),
+        );
+        const left = Math.max(0, Math.min(45, insets.left));
+        const right = Math.max(
+          0,
+          Math.min(45, Math.min(90 - left, insets.right)),
+        );
+        return {
+          ...clip,
+          cropInsetTop: top,
+          cropInsetBottom: bottom,
+          cropInsetLeft: left,
+          cropInsetRight: right,
+        };
+      }),
+    );
+  }, []);
 
-  // Phase 11 (extended) — rotation is independent of zoom/pan (see
-  // ClipVideo in Main.tsx: it folds into an extra cover-scale rather than
-  // affecting cropOffsetX/Y), so it gets its own setter.
+  // Phase 11 (extended) — rotation is independent of the 4 crop insets
+  // (see ClipVideo in Main.tsx: it folds into an extra cover-scale rather
+  // than affecting them directly), so it gets its own setter.
   const handleRotationChange = useCallback(
     (id: string, cropRotationDeg: number) => {
       setClips((prevClips) =>
