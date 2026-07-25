@@ -1,4 +1,4 @@
-import { Video } from "@remotion/media";
+import { Audio, Video } from "@remotion/media";
 import {
   AbsoluteFill,
   interpolate,
@@ -25,6 +25,8 @@ import {
 export type Clip = z.infer<typeof CompositionProps>["clips"][number];
 export type ClipRange = Clip & { from: number; to: number };
 export type Sticker = Clip["stickers"][number];
+export type Music = z.infer<typeof CompositionProps>["music"];
+export type VoiceOver = z.infer<typeof CompositionProps>["voiceOvers"][number];
 type HeaderProps = z.infer<typeof CompositionProps>["header"];
 type RankingListStyleProps = z.infer<typeof CompositionProps>["rankingListStyle"];
 
@@ -299,6 +301,32 @@ const AnimatedTitle: React.FC<{
 };
 
 /**
+ * Phase 12 — how much of a clip's *original* audio should survive at this
+ * exact point in the finished video's timeline, given every voice-over's
+ * own duck window. Takes the strongest (lowest) applicable duck level
+ * rather than multiplying overlapping windows together — simpler to
+ * reason about, and overlapping voice-overs duck the same clip audio into
+ * near-silence either way in practice, so multiplying wouldn't sound
+ * meaningfully different, just harder to predict from the numbers alone.
+ * 1 (no ducking at all) when no voice-over's window covers this frame.
+ */
+const getDuckedClipVolume = (
+  absoluteFrame: number,
+  voiceOvers: VoiceOver[],
+): number => {
+  let multiplier = 1;
+  for (const voiceOver of voiceOvers) {
+    if (
+      absoluteFrame >= voiceOver.duckOriginalFrom &&
+      absoluteFrame < voiceOver.duckOriginalTo
+    ) {
+      multiplier = Math.min(multiplier, voiceOver.duckOriginalLevel);
+    }
+  }
+  return multiplier;
+};
+
+/**
  * Phase 11 — a single clip's own video track.
  *
  * `trimBefore`/`trimAfter` (in frames, into the *original* source file —
@@ -319,8 +347,22 @@ const AnimatedTitle: React.FC<{
  * the automatic pad, even for a non-vertical clip — cropping and rotation
  * are available on every clip regardless of orientation, not gated behind
  * failing the verticality check.
+ *
+ * Phase 12 — the clip's own (non-muted) audio is volume-automated per
+ * frame via getDuckedClipVolume above, so it ducks under any voice-over
+ * whose window covers the current moment and returns to full volume the
+ * instant that window ends. `clip.from` (this clip's absolute start on the
+ * finished video's timeline) is what lets that per-frame check work
+ * correctly regardless of where in the video this clip happens to sit —
+ * the volume callback itself always receives *this Sequence's own* local
+ * frame numbering, same as useCurrentFrame() would inside it.
  */
-const ClipVideo: React.FC<{ clip: Clip }> = ({ clip }) => {
+const ClipVideo: React.FC<{ clip: ClipRange; voiceOvers: VoiceOver[] }> = ({
+  clip,
+  voiceOvers,
+}) => {
+  const volume = (localFrame: number) =>
+    getDuckedClipVolume(clip.from + localFrame, voiceOvers);
   const hasManualCrop = clip.cropZoom > 1 || clip.cropRotationDeg !== 0;
   const vertical = isClipVertical(clip.sourceWidth, clip.sourceHeight);
 
@@ -346,6 +388,7 @@ const ClipVideo: React.FC<{ clip: Clip }> = ({ clip }) => {
         src={clip.src}
         trimBefore={clip.trimStartFrame}
         trimAfter={clip.trimEndFrame}
+        volume={volume}
         objectFit="cover"
         style={{ width: "100%", height: "100%", transform }}
       />
@@ -372,6 +415,7 @@ const ClipVideo: React.FC<{ clip: Clip }> = ({ clip }) => {
           src={clip.src}
           trimBefore={clip.trimStartFrame}
           trimAfter={clip.trimEndFrame}
+          volume={volume}
           objectFit="contain"
           style={{ width: "100%", height: "100%" }}
         />
@@ -396,6 +440,63 @@ export const computeClipRanges = (clips: Clip[]): ClipRange[] => {
     return { ...clip, from, to };
   });
 };
+
+/**
+ * Phase 12 — the single background music track, spanning from frame 0 for
+ * its own full duration (Phase 12's own wording: "apply it under the whole
+ * composition" — there's no separate start-time control, unlike
+ * voice-overs below, which are each placed individually). Renders nothing
+ * at all when no track has been added (src === null) or its duration
+ * hasn't been read yet.
+ *
+ * The duck multiplier is a genuine per-frame check against clipRanges —
+ * "is *some* clip's audio playing right now" — rather than a hardcoded
+ * constant. In this app specifically, clips always play back-to-back with
+ * zero gaps (see computeClipRanges above), so today this multiplier is
+ * constant for the video's entire length; the moment gaps become possible
+ * (e.g. a future feature trims a clip shorter without shifting the ones
+ * after it), music correctly swells back to full volume during them
+ * without this needing to change at all.
+ */
+const MusicTrack: React.FC<{ music: Music; clipRanges: ClipRange[] }> = ({
+  music,
+  clipRanges,
+}) => {
+  if (!music.src || music.durationInFrames <= 0) {
+    return null;
+  }
+
+  const volume = (frame: number) => {
+    const isDuringClipAudio = clipRanges.some(
+      (range) => frame >= range.from && frame < range.to,
+    );
+    return music.volume * (isDuringClipAudio ? music.duckLevel : 1);
+  };
+
+  return (
+    <Sequence from={0} durationInFrames={music.durationInFrames}>
+      <Audio src={music.src} volume={volume} />
+    </Sequence>
+  );
+};
+
+/**
+ * Phase 12 — a single voice-over/narration clip. A thin wrapper: all the
+ * actual ducking-the-original-audio-underneath-it logic lives in
+ * getDuckedClipVolume above (applied to each *clip's* Video, not here) —
+ * this component's own job is just "play this audio file starting at this
+ * absolute frame," nothing more.
+ */
+const VoiceOverTrack: React.FC<{ voiceOver: VoiceOver }> = ({
+  voiceOver,
+}) => (
+  <Sequence
+    from={voiceOver.startFrame}
+    durationInFrames={voiceOver.durationInFrames}
+  >
+    <Audio src={voiceOver.src} volume={voiceOver.volume} />
+  </Sequence>
+);
 
 /**
  * Phase 10 — a single reaction-emoji sticker. Position/size are stored as
@@ -652,6 +753,8 @@ export const Main = ({
   clips,
   header,
   rankingListStyle,
+  music,
+  voiceOvers,
 }: z.infer<typeof CompositionProps>) => {
   const clipRanges = computeClipRanges(clips);
   const { width } = useVideoConfig();
@@ -674,7 +777,7 @@ export const Main = ({
             from={clip.from}
             durationInFrames={clip.to - clip.from}
           >
-            <ClipVideo clip={clip} />
+            <ClipVideo clip={clip} voiceOvers={voiceOvers} />
             {clip.stickers.map((sticker) => {
               // A nested <Sequence>'s `from` is relative to its parent
               // Sequence's own local frame 0 — i.e. exactly the "0 = this
@@ -697,6 +800,10 @@ export const Main = ({
           </Sequence>
         ))}
       </AbsoluteFill>
+      <MusicTrack music={music} clipRanges={clipRanges} />
+      {voiceOvers.map((voiceOver) => (
+        <VoiceOverTrack key={voiceOver.id} voiceOver={voiceOver} />
+      ))}
       <HeaderShadeBackdrop header={header} canvasWidth={width} />
       <AbsoluteFill style={{ top: videoTrackOffset }}>
         <RankingList clipRanges={clipRanges} listStyle={rankingListStyle} />

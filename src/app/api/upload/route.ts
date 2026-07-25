@@ -77,6 +77,38 @@ const normalizeVideo = async (
   ]);
 };
 
+/**
+ * Phase 12 — the audio-only counterpart to normalizeVideo above: strips
+ * any video stream (-vn) and re-encodes to AAC in a fresh .m4a container,
+ * for the same decode-safety reason clips get normalized on upload (a
+ * source in some other lossy/oddly-muxed form isn't guaranteed to be
+ * something the render pipeline can seek/decode reliably from every
+ * point). A completely separate function from normalizeVideo rather than
+ * a shared one with a branch — forcing `-c:v libx264` onto a file with no
+ * video stream at all would simply fail, so these two need genuinely
+ * different ffmpeg arguments, not a toggle on one command.
+ */
+const normalizeAudio = async (
+  inputPath: string,
+  outputPath: string,
+): Promise<void> => {
+  const ffmpegPath = resolveFfmpegPath();
+
+  await execFileAsync(ffmpegPath, [
+    "-i",
+    inputPath,
+    "-vn",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-movflags",
+    "+faststart",
+    "-y",
+    outputPath,
+  ]);
+};
+
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get("file");
@@ -97,14 +129,29 @@ export async function POST(req: NextRequest) {
   // the real, servable filename. The raw copy never gets served or
   // rendered from directly.
   const rawPath = path.join(uploadsDir, `${uniquePrefix}-raw-${safeName}`);
-  const filename = `${uniquePrefix}-${safeName}`;
+
+  // Phase 12 — music/voice-over uploads are always normalized into a
+  // fresh .m4a container (AAC audio, no video stream), regardless of the
+  // source extension: re-muxing AAC into whatever container the original
+  // filename implied (e.g. forcing AAC into an .mp3 container) would
+  // fail outright, since the container and codec have to match. Video
+  // uploads are completely untouched from before — same filename handling
+  // as always.
+  const isAudioUpload = file.type.startsWith("audio/");
+  const filename = isAudioUpload
+    ? `${uniquePrefix}-${safeName.replace(/\.[^.]+$/, "")}.m4a`
+    : `${uniquePrefix}-${safeName}`;
   const filePath = path.join(uploadsDir, filename);
 
   const bytes = await file.arrayBuffer();
   await writeFile(rawPath, new Uint8Array(bytes));
 
   try {
-    await normalizeVideo(rawPath, filePath);
+    if (isAudioUpload) {
+      await normalizeAudio(rawPath, filePath);
+    } else {
+      await normalizeVideo(rawPath, filePath);
+    }
   } catch (error) {
     console.error(`ffmpeg normalization failed for "${file.name}":`, error);
     return NextResponse.json(

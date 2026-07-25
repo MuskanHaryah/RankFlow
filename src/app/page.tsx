@@ -15,6 +15,7 @@ import {
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
 } from "../../types/constants";
+import { AudioEditor, MusicState, VoiceOverClip } from "../components/AudioEditor";
 import {
   ClipUploader,
   ClipUploaderHandle,
@@ -42,6 +43,19 @@ const Home: NextPage = () => {
   const [rankingListStyle, setRankingListStyle] = useState<
     z.infer<typeof RankingListStyleSchema>
   >(defaultMyCompProps.rankingListStyle);
+
+  // Phase 12 — same lifted pattern again: AudioEditor owns the actual
+  // music/voice-over editing state (including in-progress uploads), this
+  // just holds the latest reported value of each.
+  const [music, setMusic] = useState<MusicState>({
+    file: null,
+    src: null,
+    durationInFrames: null,
+    uploadStatus: null,
+    volume: defaultMyCompProps.music.volume,
+    duckLevel: defaultMyCompProps.music.duckLevel,
+  });
+  const [voiceOvers, setVoiceOvers] = useState<VoiceOverClip[]>([]);
 
   // Phase 10 — which clip (if any) is currently "armed" for click-to-place
   // sticker placement, and which emoji it'll place. Owned here (not inside
@@ -120,8 +134,39 @@ const Home: NextPage = () => {
         })),
       header,
       rankingListStyle,
+      // Only a real, uploaded track with a known duration counts as
+      // "music" — while a file is still uploading or its duration is
+      // still being read, this is the same silent default as no music at
+      // all, rather than risking a broken/zero-length Audio in the
+      // composition.
+      music:
+        music.src && music.uploadStatus === "done" && music.durationInFrames
+          ? {
+              src: music.src,
+              durationInFrames: music.durationInFrames,
+              volume: music.volume,
+              duckLevel: music.duckLevel,
+            }
+          : defaultMyCompProps.music,
+      voiceOvers: voiceOvers
+        .filter(
+          (vo): vo is VoiceOverClip & { durationInFrames: number } =>
+            vo.uploadStatus === "done" &&
+            vo.durationInFrames !== null &&
+            vo.durationInFrames > 0,
+        )
+        .map((vo) => ({
+          id: vo.id,
+          src: vo.src,
+          startFrame: vo.startFrame,
+          durationInFrames: vo.durationInFrames,
+          volume: vo.volume,
+          duckOriginalFrom: vo.duckOriginalFrom,
+          duckOriginalTo: vo.duckOriginalTo,
+          duckOriginalLevel: vo.duckOriginalLevel,
+        })),
     };
-  }, [uploadedClips, header, rankingListStyle]);
+  }, [uploadedClips, header, rankingListStyle, music, voiceOvers]);
 
   const totalDurationInFrames = useMemo(() => {
     const total = inputProps.clips.reduce(
@@ -228,6 +273,27 @@ const Home: NextPage = () => {
   const clipCount = inputProps.clips.length;
   const totalSeconds = (totalDurationInFrames / VIDEO_FPS).toFixed(1);
 
+  // Phase 12 — reads the Player's live position for AudioEditor's "Use
+  // current preview time" buttons. A plain function (not state) since
+  // nothing needs to re-render when the preview's playhead moves — it's
+  // only ever read at the moment a button is actually clicked.
+  //
+  // Clamped against the *current* totalDurationInFrames: the Player's own
+  // internal scrub position doesn't automatically rewind when
+  // durationInFrames shrinks (e.g. trimming or deleting a clip after
+  // having scrubbed further into a longer draft) — without this clamp,
+  // getCurrentFrame() can report a stale position past the video's actual
+  // current length, which is exactly what "2 minutes into an 18-second
+  // video" was.
+  const getCurrentPreviewSeconds = useCallback(() => {
+    const frame = playerRef.current?.getCurrentFrame() ?? 0;
+    const clamped = Math.min(
+      Math.max(frame, 0),
+      Math.max(totalDurationInFrames - 1, 0),
+    );
+    return clamped / VIDEO_FPS;
+  }, [totalDurationInFrames]);
+
   return (
     <div className="min-h-screen bg-background font-geist">
       <header className="sticky top-0 z-20 border-b border-unfocused-border-color bg-background/85 backdrop-blur-md">
@@ -286,6 +352,17 @@ const Home: NextPage = () => {
                 rankingListStyle={rankingListStyle}
                 stickerPlacementArmedFor={stickerPlacementArmedFor?.clipId ?? null}
                 onArmStickerPlacement={handleArmStickerPlacement}
+              />
+            </Section>
+            <Section
+              label="Audio"
+              description="Background music and voice-over, with auto-ducking"
+              defaultOpen={false}
+            >
+              <AudioEditor
+                onMusicChange={setMusic}
+                onVoiceOversChange={setVoiceOvers}
+                getCurrentPreviewSeconds={getCurrentPreviewSeconds}
               />
             </Section>
             <Section label="Export" description="Render the final video locally" defaultOpen={false}>

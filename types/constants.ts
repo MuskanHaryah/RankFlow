@@ -283,10 +283,76 @@ export const defaultRankingListStyle: z.infer<typeof RankingListStyleSchema> =
     titleBorderWidth: 2,
   };
 
+// Phase 12 — one background music track for the whole video. src === null
+// means no music has been added yet, in which case Main.tsx's MusicTrack
+// renders nothing at all.
+export const MusicSchema = z.object({
+  src: z.string().nullable(),
+  durationInFrames: z.number(),
+  volume: z.number(), // overall/base level, 0-1
+  // Multiplier applied to `volume` for however much of the video is
+  // "during some clip's audio" — see Main.tsx's MusicTrack for why this
+  // collapses to a constant for the video's whole length in this app
+  // specifically (clips play back-to-back with no gaps today), and why
+  // it's still computed as a genuine per-frame check rather than hardcoded
+  // to a flat value.
+  duckLevel: z.number(),
+});
+
+export const defaultMusic: z.infer<typeof MusicSchema> = {
+  src: null,
+  durationInFrames: 0,
+  volume: 0.5,
+  duckLevel: 0.2, // "drops to 20% during any clip audio" — Phase 12's own wording
+};
+
+// Phase 12 — a single voice-over/narration clip layered on top of the
+// composition, independent from the video clips' own audio. Placed on the
+// *absolute* video timeline (not clip-relative like Phase 10's stickers)
+// since audio timing is naturally thought of against the whole finished
+// video, not against one specific clip.
+export const VoiceOverSchema = z.object({
+  id: z.string(),
+  src: z.string(),
+  // Where in the finished video's timeline this starts playing. Its own
+  // length comes from the audio file's actual duration
+  // (durationInFrames below) — there's no separate "how long to play it"
+  // control, the same way a video clip's own played length isn't
+  // separately configurable from its trim points.
+  startFrame: z.number(),
+  durationInFrames: z.number(),
+  volume: z.number(), // 0-1
+  // The window (absolute timeline frames) during which every clip's
+  // *original* audio is ducked to make room for this voice-over. Kept
+  // independent from startFrame/durationInFrames above — the ducked
+  // window might deliberately start a little before the voice-over's own
+  // first word, or extend a little past its last one.
+  duckOriginalFrom: z.number(),
+  duckOriginalTo: z.number(),
+  // How much of the original clip audio survives during the duck window:
+  // 0 = fully silent, 1 = no ducking effect at all. Kept per-voice-over
+  // (not one global number) so a quiet aside and a loud callout can duck
+  // the original audio by different amounts.
+  duckOriginalLevel: z.number(),
+});
+
+export const VOICE_OVER_DEFAULT_VOLUME = 1;
+// Original audio nearly silenced under narration by default — enough that
+// the voice-over is clearly the thing to listen to, without going fully
+// silent (0), which would read as a hard cut rather than a duck.
+export const VOICE_OVER_DEFAULT_DUCK_LEVEL = 0.15;
+// How much of the video (in seconds) a freshly-added voice-over's duck
+// window defaults to spanning, centered on wherever it's placed — a
+// starting point the person then drags/types to match their actual
+// narration length.
+export const VOICE_OVER_DEFAULT_DUCK_WINDOW_SECONDS = 4;
+
 export const CompositionProps = z.object({
   clips: z.array(ClipSchema),
   header: HeaderSchema,
   rankingListStyle: RankingListStyleSchema,
+  music: MusicSchema,
+  voiceOvers: z.array(VoiceOverSchema),
 });
 
 export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
@@ -304,6 +370,8 @@ export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
     verticalOffset: 0,
   },
   rankingListStyle: defaultRankingListStyle,
+  music: defaultMusic,
+  voiceOvers: [],
 };
 
 // How many seconds the header stays on screen when durationMode is
