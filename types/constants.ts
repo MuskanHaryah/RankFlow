@@ -321,7 +321,14 @@ export const VoiceOverSchema = z.object({
   // separately configurable from its trim points.
   startFrame: z.number(),
   durationInFrames: z.number(),
-  volume: z.number(), // 0-1
+  // 0-2 (see MAX_VOICE_OVER_VOLUME). Unlike a plain HTML5 <audio> element
+  // (capped at 1, i.e. never
+  // louder than the source recording itself), Remotion's volume is applied
+  // via a Web Audio gain node, so values above 1 genuinely amplify beyond
+  // the recording's own loudness — needed because a TTS/recorded
+  // voice-over is very often quieter than a video clip's own audio, and
+  // capping at 1 made it impossible to ever fully close that gap.
+  volume: z.number(),
   // The window (absolute timeline frames) during which every clip's
   // *original* audio is ducked to make room for this voice-over. Kept
   // independent from startFrame/durationInFrames above — the ducked
@@ -336,7 +343,14 @@ export const VoiceOverSchema = z.object({
   duckOriginalLevel: z.number(),
 });
 
-export const VOICE_OVER_DEFAULT_VOLUME = 1;
+// Starts pre-boosted rather than at exactly 1 (the recording's own level) —
+// a TTS/recorded voice-over is, in practice, almost always quieter than a
+// video clip's original audio, so defaulting to "no boost at all" meant
+// nearly everyone had to immediately go find and raise this slider by
+// hand. Still fully adjustable per voice-over from 0 up to
+// MAX_VOICE_OVER_VOLUME.
+export const VOICE_OVER_DEFAULT_VOLUME = 1.6;
+export const MAX_VOICE_OVER_VOLUME = 2;
 // Original audio nearly silenced under narration by default — enough that
 // the voice-over is clearly the thing to listen to, without going fully
 // silent (0), which would read as a hard cut rather than a duck.

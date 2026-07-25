@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  MAX_VOICE_OVER_VOLUME,
   VOICE_OVER_DEFAULT_DUCK_LEVEL,
   VOICE_OVER_DEFAULT_DUCK_WINDOW_SECONDS,
   VOICE_OVER_DEFAULT_VOLUME,
@@ -616,7 +617,7 @@ export const AudioEditor: React.FC<{
                 <input
                   type="range"
                   min={0}
-                  max={1}
+                  max={MAX_VOICE_OVER_VOLUME}
                   step={0.05}
                   value={vo.volume}
                   onChange={(e) =>
@@ -628,6 +629,13 @@ export const AudioEditor: React.FC<{
                   {Math.round(vo.volume * 100)}%
                 </span>
               </div>
+              {vo.volume > 1 ? (
+                <p className="text-[11px] leading-snug text-subtitle">
+                  Above 100% amplifies beyond the original recording's own
+                  loudness — useful since a quieter TTS/recorded voice-over
+                  often needs boosting to match a video clip's own audio.
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-3 rounded-geist border border-unfocused-border-color bg-panel-raised/40 p-geist-half">

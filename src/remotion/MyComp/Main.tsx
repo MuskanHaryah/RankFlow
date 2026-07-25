@@ -474,10 +474,28 @@ const MusicTrack: React.FC<{ music: Music; clipRanges: ClipRange[] }> = ({
   };
 
   return (
-    <Sequence from={0} durationInFrames={music.durationInFrames}>
+    <Sequence durationInFrames={music.durationInFrames}>
       <Audio src={music.src} volume={volume} />
     </Sequence>
   );
+};
+
+/**
+ * A flat linear multiply on volume makes the 100%->200% range of the
+ * slider feel almost unchanged, since human loudness perception is closer
+ * to logarithmic than linear — doubling a number doesn't sound like
+ * "twice as loud." Squaring the amount *over* 100% accelerates the boost
+ * the further past 100% the person drags the slider, so 150% is a clear,
+ * audible step up and 200% (the max) lands around 4x the original signal
+ * — a dramatic, unmistakable difference rather than a modest linear bump.
+ * At/under 100% this is unchanged (a straight pass-through), matching
+ * "100% = the recording's own original level" exactly.
+ */
+const getVoiceOverAppliedVolume = (storedVolume: number): number => {
+  if (storedVolume <= 1) {
+    return storedVolume;
+  }
+  return 1 + (storedVolume - 1) ** 2 * 3;
 };
 
 /**
@@ -489,14 +507,17 @@ const MusicTrack: React.FC<{ music: Music; clipRanges: ClipRange[] }> = ({
  */
 const VoiceOverTrack: React.FC<{ voiceOver: VoiceOver }> = ({
   voiceOver,
-}) => (
-  <Sequence
-    from={voiceOver.startFrame}
-    durationInFrames={voiceOver.durationInFrames}
-  >
-    <Audio src={voiceOver.src} volume={voiceOver.volume} />
-  </Sequence>
-);
+}) => {
+  const appliedVolume = getVoiceOverAppliedVolume(voiceOver.volume);
+  return (
+    <Sequence
+      from={voiceOver.startFrame}
+      durationInFrames={voiceOver.durationInFrames}
+    >
+      <Audio src={voiceOver.src} volume={() => appliedVolume} />
+    </Sequence>
+  );
+};
 
 /**
  * Phase 10 — a single reaction-emoji sticker. Position/size are stored as

@@ -27,18 +27,31 @@ export async function POST(req: NextRequest) {
 
   // A local render process runs in Node, completely outside the browser —
   // it can never read a blob: URL, since those only exist in browser
-  // memory. Every clip must already be a real uploaded server path before
-  // we even attempt a render.
+  // memory. Every clip, plus any music/voice-over track (Phase 12), must
+  // already be a real uploaded server path before we even attempt a
+  // render.
   const hasUnuploadedClip = inputProps.clips.some(
     (clip: { src?: string }) =>
       typeof clip.src !== "string" || clip.src.startsWith("blob:"),
   );
+  const hasUnuploadedMusic =
+    inputProps.music &&
+    inputProps.music.src !== null &&
+    (typeof inputProps.music.src !== "string" ||
+      inputProps.music.src.startsWith("blob:"));
+  const hasUnuploadedVoiceOver =
+    Array.isArray(inputProps.voiceOvers) &&
+    inputProps.voiceOvers.some(
+      (voiceOver: { src?: string }) =>
+        typeof voiceOver.src !== "string" ||
+        voiceOver.src.startsWith("blob:"),
+    );
 
-  if (hasUnuploadedClip) {
+  if (hasUnuploadedClip || hasUnuploadedMusic || hasUnuploadedVoiceOver) {
     return NextResponse.json(
       {
         error:
-          "One or more clips haven't finished uploading to the server yet. Wait for every clip to show 'uploaded' before rendering.",
+          "One or more clips, the music track, or a voice-over haven't finished uploading to the server yet. Wait for everything to show 'uploaded' before rendering.",
       },
       { status: 400 },
     );
@@ -50,15 +63,38 @@ export async function POST(req: NextRequest) {
   // before rendering, and that copy step has proven unreliable for files
   // that were just uploaded — the live Next.js server is already serving
   // these files correctly, so there's no reason to route through a second,
-  // less reliable copy of them.
+  // less reliable copy of them. This has to cover every uploaded-file
+  // field on inputProps, not just clips — music and voiceOvers (Phase 12)
+  // are uploaded the exact same way and hit the exact same bundle-copy
+  // unreliability if left as relative paths.
   const host = req.headers.get("host") || "localhost:3000";
+  const toAbsolute = (src: string) => `http://${host}${src}`;
+
   const clipsWithAbsoluteUrls = inputProps.clips.map(
     (clip: { src: string }) => ({
       ...clip,
-      src: `http://${host}${clip.src}`,
+      src: toAbsolute(clip.src),
     }),
   );
-  const propsToWrite = { ...inputProps, clips: clipsWithAbsoluteUrls };
+
+  const musicWithAbsoluteUrl =
+    inputProps.music && typeof inputProps.music.src === "string"
+      ? { ...inputProps.music, src: toAbsolute(inputProps.music.src) }
+      : inputProps.music;
+
+  const voiceOversWithAbsoluteUrls = Array.isArray(inputProps.voiceOvers)
+    ? inputProps.voiceOvers.map((voiceOver: { src: string }) => ({
+        ...voiceOver,
+        src: toAbsolute(voiceOver.src),
+      }))
+    : inputProps.voiceOvers;
+
+  const propsToWrite = {
+    ...inputProps,
+    clips: clipsWithAbsoluteUrls,
+    music: musicWithAbsoluteUrl,
+    voiceOvers: voiceOversWithAbsoluteUrls,
+  };
 
   const propsPath = path.join(os.tmpdir(), `rankflow-props-${Date.now()}.json`);
   await writeFile(propsPath, JSON.stringify(propsToWrite));
