@@ -361,12 +361,24 @@ export const VOICE_OVER_DEFAULT_DUCK_LEVEL = 0.15;
 // narration length.
 export const VOICE_OVER_DEFAULT_DUCK_WINDOW_SECONDS = 4;
 
+// Phase 12 (extended) — a single master volume for every clip's original
+// audio, applied uniformly across the whole video (not configurable per
+// clip — that's deliberate, per the request this was added for: one
+// control for "how loud is my footage's own sound", separate from music
+// and voice-over levels). Defaults to 1 (unchanged from how clips always
+// sounded before this existed). Allowed above 1, same reasoning as
+// voice-over volume: source footage audio is very often quieter than
+// you'd want, and capping at 1 would make it impossible to boost.
+export const DEFAULT_ORIGINAL_AUDIO_VOLUME = 1;
+export const MAX_ORIGINAL_AUDIO_VOLUME = 2;
+
 export const CompositionProps = z.object({
   clips: z.array(ClipSchema),
   header: HeaderSchema,
   rankingListStyle: RankingListStyleSchema,
   music: MusicSchema,
   voiceOvers: z.array(VoiceOverSchema),
+  originalAudioVolume: z.number(),
 });
 
 export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
@@ -386,6 +398,7 @@ export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
   rankingListStyle: defaultRankingListStyle,
   music: defaultMusic,
   voiceOvers: [],
+  originalAudioVolume: DEFAULT_ORIGINAL_AUDIO_VOLUME,
 };
 
 // How many seconds the header stays on screen when durationMode is

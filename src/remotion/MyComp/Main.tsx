@@ -327,6 +327,23 @@ const getDuckedClipVolume = (
 };
 
 /**
+ * Phase 12 (extended) — the final volume for a clip's original audio at a
+ * given moment: the project-wide master level (originalAudioVolume, one
+ * control for the whole video — not per clip) multiplied by whatever
+ * per-frame ducking applies from getDuckedClipVolume above. Multiplying
+ * rather than picking one or the other is what lets someone turn the
+ * whole video's footage audio down to, say, 60%, and still have
+ * voice-over ducking correctly drop it further (to 60% × duck level)
+ * during a voice-over, instead of the duck window suddenly overriding
+ * their overall level back up to 100%.
+ */
+const getFinalClipVolume = (
+  absoluteFrame: number,
+  voiceOvers: VoiceOver[],
+  originalAudioVolume: number,
+): number => originalAudioVolume * getDuckedClipVolume(absoluteFrame, voiceOvers);
+
+/**
  * Phase 11 — a single clip's own video track.
  *
  * `trimBefore`/`trimAfter` (in frames, into the *original* source file —
@@ -349,20 +366,22 @@ const getDuckedClipVolume = (
  * failing the verticality check.
  *
  * Phase 12 — the clip's own (non-muted) audio is volume-automated per
- * frame via getDuckedClipVolume above, so it ducks under any voice-over
- * whose window covers the current moment and returns to full volume the
+ * frame via getFinalClipVolume above, so it reflects both the project's
+ * overall original-audio level and ducks under any voice-over whose
+ * window covers the current moment, returning to that overall level the
  * instant that window ends. `clip.from` (this clip's absolute start on the
  * finished video's timeline) is what lets that per-frame check work
  * correctly regardless of where in the video this clip happens to sit —
  * the volume callback itself always receives *this Sequence's own* local
  * frame numbering, same as useCurrentFrame() would inside it.
  */
-const ClipVideo: React.FC<{ clip: ClipRange; voiceOvers: VoiceOver[] }> = ({
-  clip,
-  voiceOvers,
-}) => {
+const ClipVideo: React.FC<{
+  clip: ClipRange;
+  voiceOvers: VoiceOver[];
+  originalAudioVolume: number;
+}> = ({ clip, voiceOvers, originalAudioVolume }) => {
   const volume = (localFrame: number) =>
-    getDuckedClipVolume(clip.from + localFrame, voiceOvers);
+    getFinalClipVolume(clip.from + localFrame, voiceOvers, originalAudioVolume);
   const hasManualCrop = clip.cropZoom > 1 || clip.cropRotationDeg !== 0;
   const vertical = isClipVertical(clip.sourceWidth, clip.sourceHeight);
 
@@ -776,6 +795,7 @@ export const Main = ({
   rankingListStyle,
   music,
   voiceOvers,
+  originalAudioVolume,
 }: z.infer<typeof CompositionProps>) => {
   const clipRanges = computeClipRanges(clips);
   const { width } = useVideoConfig();
@@ -798,7 +818,11 @@ export const Main = ({
             from={clip.from}
             durationInFrames={clip.to - clip.from}
           >
-            <ClipVideo clip={clip} voiceOvers={voiceOvers} />
+            <ClipVideo
+              clip={clip}
+              voiceOvers={voiceOvers}
+              originalAudioVolume={originalAudioVolume}
+            />
             {clip.stickers.map((sticker) => {
               // A nested <Sequence>'s `from` is relative to its parent
               // Sequence's own local frame 0 — i.e. exactly the "0 = this

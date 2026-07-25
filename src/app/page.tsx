@@ -56,6 +56,11 @@ const Home: NextPage = () => {
     duckLevel: defaultMyCompProps.music.duckLevel,
   });
   const [voiceOvers, setVoiceOvers] = useState<VoiceOverClip[]>([]);
+  // Phase 12 (extended) — one master volume for every clip's original
+  // audio, reported up the same way music/voiceOvers are.
+  const [originalAudioVolume, setOriginalAudioVolume] = useState(
+    defaultMyCompProps.originalAudioVolume,
+  );
 
   // Phase 10 — which clip (if any) is currently "armed" for click-to-place
   // sticker placement, and which emoji it'll place. Owned here (not inside
@@ -165,8 +170,16 @@ const Home: NextPage = () => {
           duckOriginalTo: vo.duckOriginalTo,
           duckOriginalLevel: vo.duckOriginalLevel,
         })),
+      originalAudioVolume,
     };
-  }, [uploadedClips, header, rankingListStyle, music, voiceOvers]);
+  }, [
+    uploadedClips,
+    header,
+    rankingListStyle,
+    music,
+    voiceOvers,
+    originalAudioVolume,
+  ]);
 
   const totalDurationInFrames = useMemo(() => {
     const total = inputProps.clips.reduce(
@@ -362,6 +375,7 @@ const Home: NextPage = () => {
               <AudioEditor
                 onMusicChange={setMusic}
                 onVoiceOversChange={setVoiceOvers}
+                onOriginalAudioVolumeChange={setOriginalAudioVolume}
                 getCurrentPreviewSeconds={getCurrentPreviewSeconds}
               />
             </Section>

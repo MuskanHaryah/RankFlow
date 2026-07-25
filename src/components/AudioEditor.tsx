@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  MAX_ORIGINAL_AUDIO_VOLUME,
   MAX_VOICE_OVER_VOLUME,
+  DEFAULT_ORIGINAL_AUDIO_VOLUME,
   VOICE_OVER_DEFAULT_DUCK_LEVEL,
   VOICE_OVER_DEFAULT_DUCK_WINDOW_SECONDS,
   VOICE_OVER_DEFAULT_VOLUME,
@@ -258,10 +260,21 @@ const SecondsInput: React.FC<{
 export const AudioEditor: React.FC<{
   onMusicChange?: (music: MusicState) => void;
   onVoiceOversChange?: (voiceOvers: VoiceOverClip[]) => void;
+  onOriginalAudioVolumeChange?: (volume: number) => void;
   getCurrentPreviewSeconds: () => number;
-}> = ({ onMusicChange, onVoiceOversChange, getCurrentPreviewSeconds }) => {
+}> = ({
+  onMusicChange,
+  onVoiceOversChange,
+  onOriginalAudioVolumeChange,
+  getCurrentPreviewSeconds,
+}) => {
   const [music, setMusic] = useState<MusicState>(DEFAULT_MUSIC_STATE);
   const [voiceOvers, setVoiceOvers] = useState<VoiceOverClip[]>([]);
+  // Phase 12 (extended) — one master volume for every clip's original
+  // audio, applied uniformly across the whole video rather than per clip.
+  const [originalAudioVolume, setOriginalAudioVolume] = useState(
+    DEFAULT_ORIGINAL_AUDIO_VOLUME,
+  );
 
   useEffect(() => {
     onMusicChange?.(music);
@@ -270,6 +283,10 @@ export const AudioEditor: React.FC<{
   useEffect(() => {
     onVoiceOversChange?.(voiceOvers);
   }, [voiceOvers, onVoiceOversChange]);
+
+  useEffect(() => {
+    onOriginalAudioVolumeChange?.(originalAudioVolume);
+  }, [originalAudioVolume, onOriginalAudioVolumeChange]);
 
   const handleMusicFileSelected: React.ChangeEventHandler<HTMLInputElement> =
     useCallback((e) => {
@@ -431,6 +448,33 @@ export const AudioEditor: React.FC<{
   return (
     <InputContainer>
       <label className="text-sm font-medium">Audio</label>
+
+      <div className="flex flex-col gap-3 control-group">
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-subtitle">
+          <span aria-hidden="true">🔊</span> Original video sound
+        </p>
+        <p className="text-[11px] text-subtitle">
+          One level for every clip&apos;s own audio together — not
+          configurable per clip.
+        </p>
+        <div className="field-row">
+          <label className="field-row-label">Volume</label>
+          <div className="field-row-controls">
+            <input
+              type="range"
+              min={0}
+              max={MAX_ORIGINAL_AUDIO_VOLUME}
+              step={0.05}
+              value={originalAudioVolume}
+              onChange={(e) => setOriginalAudioVolume(Number(e.target.value))}
+              className="w-40"
+            />
+            <span className="w-12 font-mono-tabular text-sm text-subtitle">
+              {Math.round(originalAudioVolume * 100)}%
+            </span>
+          </div>
+        </div>
+      </div>
 
       <div className="flex flex-col gap-3">
         <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-subtitle">
