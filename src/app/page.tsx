@@ -25,6 +25,7 @@ import {
 } from "../components/ClipUploader";
 import { HeaderEditor } from "../components/HeaderEditor";
 import { GlobalCropEditor } from "../components/GlobalCropEditor";
+import { PresetManager, PresetStyle } from "../components/PresetManager";
 import { RankingListStyleEditor } from "../components/RankingListStyleEditor";
 import { RenderControls } from "../components/RenderControls";
 import { Section } from "../components/Section";
@@ -209,6 +210,46 @@ const Home: NextPage = () => {
     [header],
   );
 
+  // Phase 13 — everything the Presets panel needs to save a snapshot of
+  // the current style, minus `words` (per-video content, not style — see
+  // PresetStyleSchema's comment in constants.ts) and minus
+  // defaultAnimationStyle (a save-time choice made inside PresetManager
+  // itself, not a single live value this page owns).
+  const currentPresetStyle: Omit<PresetStyle, "defaultAnimationStyle"> =
+    useMemo(() => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { words: _words, ...headerStyle } = header;
+      return {
+        header: headerStyle,
+        rankingListStyle,
+        globalCrop,
+        musicVolume: music.volume,
+        musicDuckLevel: music.duckLevel,
+        originalAudioVolume,
+      };
+    }, [header, rankingListStyle, globalCrop, music, originalAudioVolume]);
+
+  // Applies a loaded preset's style to every corresponding piece of state.
+  // Deliberately does NOT touch uploadedClips (content), header.words
+  // (content), music.src/voiceOvers (content) — only the style fields each
+  // already owns. The animation style is applied via ClipUploader's
+  // exposed handle, reusing its existing "Apply to all" bulk-set rather
+  // than introducing a second way to mass-set animationStyle.
+  const handleLoadPreset = useCallback((style: PresetStyle) => {
+    setHeader((prevHeader) => ({ ...prevHeader, ...style.header }));
+    setRankingListStyle(style.rankingListStyle);
+    setGlobalCrop(style.globalCrop);
+    setMusic((prevMusic) => ({
+      ...prevMusic,
+      volume: style.musicVolume,
+      duckLevel: style.musicDuckLevel,
+    }));
+    setOriginalAudioVolume(style.originalAudioVolume);
+    clipUploaderRef.current?.applyAnimationStyleToAll(
+      style.defaultAnimationStyle,
+    );
+  }, []);
+
   // Phase 10 — the actual "click the preview to place a sticker" handler.
   // Only active while stickerPlacementArmedFor is set (the overlay below
   // isn't even rendered otherwise, so this can't fire by accident).
@@ -359,6 +400,16 @@ const Home: NextPage = () => {
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start lg:gap-10">
           {/* Controls — scrolls normally, sits on the left on desktop */}
           <div className="order-2 flex flex-col gap-5 lg:order-1">
+            <Section
+              label="Presets"
+              description="Save this project's style, or load a saved one"
+              defaultOpen={false}
+            >
+              <PresetManager
+                currentStyle={currentPresetStyle}
+                onLoadPreset={handleLoadPreset}
+              />
+            </Section>
             <Section label="Header" description="A one-time title for the whole video">
               <HeaderEditor onHeaderChange={setHeader} />
             </Section>

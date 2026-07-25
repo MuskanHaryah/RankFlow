@@ -48,6 +48,17 @@ export const StickerSchema = z.object({
   endFrame: z.number(),
 });
 
+// Named so Phase 13's preset schema can reuse it without duplicating this
+// list — see PresetStyleSchema below.
+export const AnimationStyleSchema = z.enum([
+  "fade",
+  "slideUp",
+  "pop",
+  "typewriter",
+  "glow",
+  "bounceLetters",
+]);
+
 export const ClipSchema = z.object({
   id: z.string(),
   // A URL the Remotion <Video> component can load: a blob: URL during the
@@ -82,14 +93,7 @@ export const ClipSchema = z.object({
   // reveals (i.e. the moment its clip starts playing). Does not affect the
   // dim transition when the clip finishes — that stays an instant color
   // change, this is purely the "appear" moment.
-  animationStyle: z.enum([
-    "fade",
-    "slideUp",
-    "pop",
-    "typewriter",
-    "glow",
-    "bounceLetters",
-  ]),
+  animationStyle: AnimationStyleSchema,
   // Phase 10 — reaction emoji stickers placed on this specific clip.
   // Separate from badgeEmoji (Phase 4's rank badge) — these are freely
   // positioned decorations, not tied to the ranking list at all.
@@ -383,6 +387,44 @@ export const GlobalCropSchema = z.object({
   left: z.number(),
   right: z.number(),
 });
+
+// Phase 13 — a named, reusable bundle of *style* settings: every
+// color/font/border/spacing/backdrop/crop/mix preference a person has
+// dialed in, deliberately excluding anything that's this-specific-video
+// *content* rather than a reusable look — the actual clips, the header's
+// literal wording, and any uploaded music/voice-over file. Saved to (and
+// loaded from) localStorage as a named Preset; never sent to the render
+// pipeline directly, which is why this lives as its own schema rather than
+// folded into CompositionProps.
+export const PresetStyleSchema = z.object({
+  // Every header field except `words` (the literal title text) — a
+  // preset should carry "how the header looks," not what it says.
+  // Deriving this via .omit() keeps it in lockstep automatically if
+  // HeaderSchema ever grows another style field.
+  header: HeaderSchema.omit({ words: true }),
+  rankingListStyle: RankingListStyleSchema,
+  globalCrop: GlobalCropSchema,
+  // The animation a saved preset "remembers" as its house style. Loading a
+  // preset applies this to every clip currently in the project — the same
+  // one-off bulk-set the existing "Apply to all" control already performs,
+  // not a new per-clip mechanic.
+  defaultAnimationStyle: AnimationStyleSchema,
+  // Audio *mix* levels, not the uploaded files themselves — a preset never
+  // carries someone else's music/voice-over file as content, but "music
+  // sits at 50% and ducks to 20%" is a genuine reusable style choice.
+  musicVolume: z.number(),
+  musicDuckLevel: z.number(),
+  originalAudioVolume: z.number(),
+});
+
+export const PresetSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  createdAt: z.number(), // Date.now() at save time
+  style: PresetStyleSchema,
+});
+
+export const PRESETS_STORAGE_KEY = "rankflow-presets";
 
 export const CompositionProps = z.object({
   clips: z.array(ClipSchema),

@@ -102,6 +102,64 @@ const textStrokeStyle = (
       }
     : {};
 
+// Matches the broad "is this an emoji" Unicode property plus the
+// auxiliary code points that combine with it into multi-part emoji:
+// variation selector (FE0F), zero-width joiner (200D — family/profession
+// emoji), Fitzpatrick skin-tone modifiers, and regional-indicator letters
+// (flag emoji, which are pairs of these). Used to test a single grapheme
+// cluster (see `graphemes` below), not a whole string.
+//
+// Built via the RegExp constructor rather than a /u-flagged literal —
+// this project's tsconfig targets ES5, and TypeScript rejects the `u`
+// flag on regex *literals* for that target even though every actual
+// runtime this code runs on (browsers, and the headless Chrome Remotion
+// renders with) fully supports it. A constructed RegExp isn't a literal,
+// so it isn't subject to that compile-time restriction.
+const EMOJI_TEST_REGEX = new RegExp(
+  "\\p{Extended_Pictographic}|\\p{Regional_Indicator}|[\\u200D\\uFE0F\\u{1F3FB}-\\u{1F3FF}]",
+  "u",
+);
+
+/**
+ * Splits a string into Unicode grapheme clusters — the "characters" a
+ * person actually perceives — correctly keeping multi-codepoint emoji
+ * (flags, ZWJ family/skin-tone sequences, or a single emoji above the
+ * Basic Multilingual Plane, which is most modern emoji) together as one
+ * unit. Plain `text.split("")` breaks on individual UTF-16 code units,
+ * which corrupts any such emoji: a lone surrogate half renders as a
+ * broken tofu glyph. This was the actual cause of emoji appearing as
+ * broken boxes in the "Bounce letters" and typewriter reveal styles
+ * specifically — those are the two animations that slice the title
+ * character-by-character. Intl.Segmenter is fully supported in both
+ * regular Chrome (preview) and the headless Chrome Remotion renders
+ * with, so this isn't a compatibility gamble.
+ */
+const graphemes = (text: string): string[] => {
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter(undefined, {
+      granularity: "grapheme",
+    });
+    return Array.from(segmenter.segment(text), (s) => s.segment);
+  }
+  return Array.from(text);
+};
+
+/**
+ * The per-grapheme style override needed for emoji specifically: color
+ * (bitmap/COLR font) emoji glyphs always render their own embedded
+ * colors regardless of the CSS `color` property, so the dim-when-
+ * finished effect (driven by `color` for plain text) has no visible
+ * effect on them — this applies `opacity` instead, the one visual
+ * property color emoji genuinely do respect. The text-stroke border is
+ * also explicitly canceled here rather than left inherited, since a
+ * stroke width isn't something a color-glyph emoji can meaningfully
+ * apply either.
+ */
+const emojiGraphemeStyle = (isCurrent: boolean): React.CSSProperties => ({
+  opacity: isCurrent ? 1 : 0.68,
+  WebkitTextStroke: "0px transparent",
+});
+
 // How long the entrance animation takes to finish, in frames, once a
 // clip's title first reveals. Purely the "appear" moment — has no effect
 // on the later bright -> dim transition when the clip finishes.
@@ -120,16 +178,18 @@ const TypewriterTitle: React.FC<{
   text: string;
   textStyle: React.CSSProperties;
   framesSinceStart: number;
-}> = ({ text, textStyle, framesSinceStart }) => {
-  const typeDuration = Math.min(45, Math.max(18, text.length * 2));
+  isCurrent: boolean;
+}> = ({ text, textStyle, framesSinceStart, isCurrent }) => {
+  const chars = graphemes(text);
+  const typeDuration = Math.min(45, Math.max(18, chars.length * 2));
   const revealedFloat = interpolate(
     framesSinceStart,
     [0, typeDuration],
-    [0, text.length],
+    [0, chars.length],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
   const charsToShow = Math.floor(revealedFloat);
-  const isTyping = charsToShow < text.length;
+  const isTyping = charsToShow < chars.length;
 
   // While typing: a gentle pulse so the sparkle reads as "active" at the
   // cursor. Once typing finishes: one quick flare-and-fade, then gone.
@@ -148,7 +208,15 @@ const TypewriterTitle: React.FC<{
 
   return (
     <span style={textStyle}>
-      {text.slice(0, charsToShow)}
+      {chars.slice(0, charsToShow).map((char, i) =>
+        EMOJI_TEST_REGEX.test(char) ? (
+          <span key={i} style={emojiGraphemeStyle(isCurrent)}>
+            {char}
+          </span>
+        ) : (
+          char
+        ),
+      )}
       {sparkleOpacity > 0 ? (
         <span
           style={{
@@ -174,29 +242,38 @@ const BounceLettersTitle: React.FC<{
   textStyle: React.CSSProperties;
   framesSinceStart: number;
   fps: number;
-}> = ({ text, textStyle, framesSinceStart, fps }) => {
+  isCurrent: boolean;
+}> = ({ text, textStyle, framesSinceStart, fps, isCurrent }) => {
   return (
     <span style={textStyle}>
-      {text.split("").map((char, i) => {
+      {graphemes(text).map((char, i) => {
         const localFrame = framesSinceStart - i * LETTER_STAGGER;
         const bounce = spring({
           frame: Math.max(0, localFrame),
           fps,
           config: { damping: 12, stiffness: 260, mass: 0.4 },
         });
-        const opacity = interpolate(localFrame, [0, 6], [0, 1], {
+        const entranceOpacity = interpolate(localFrame, [0, 6], [0, 1], {
           extrapolateLeft: "clamp",
           extrapolateRight: "clamp",
         });
         const translateY = interpolate(bounce, [0, 1], [10, 0]);
+        const isEmoji = EMOJI_TEST_REGEX.test(char);
 
         return (
           <span
             key={i}
             style={{
               display: "inline-block",
-              opacity,
+              // Composed rather than set twice — a single element only
+              // has one `opacity`, so an emoji grapheme's dim-when-
+              // finished factor multiplies directly into the same
+              // entrance-fade number a plain-text grapheme also uses.
+              opacity: isEmoji
+                ? entranceOpacity * (isCurrent ? 1 : 0.68)
+                : entranceOpacity,
               transform: `translateY(${translateY}px) scale(${Math.max(bounce, 0)})`,
+              ...(isEmoji ? { WebkitTextStroke: "0px transparent" } : {}),
             }}
           >
             {char === " " ? "\u00A0" : char}
@@ -219,13 +296,15 @@ const AnimatedTitle: React.FC<{
   framesSinceStart: number;
   fps: number;
   animationStyle: Clip["animationStyle"];
-}> = ({ text, textStyle, framesSinceStart, fps, animationStyle }) => {
+  isCurrent: boolean;
+}> = ({ text, textStyle, framesSinceStart, fps, animationStyle, isCurrent }) => {
   if (animationStyle === "typewriter") {
     return (
       <TypewriterTitle
         text={text}
         textStyle={textStyle}
         framesSinceStart={framesSinceStart}
+        isCurrent={isCurrent}
       />
     );
   }
@@ -237,6 +316,7 @@ const AnimatedTitle: React.FC<{
         textStyle={textStyle}
         framesSinceStart={framesSinceStart}
         fps={fps}
+        isCurrent={isCurrent}
       />
     );
   }
@@ -297,7 +377,35 @@ const AnimatedTitle: React.FC<{
     motionStyle = { opacity, transform: `scale(${scale})` };
   }
 
-  return <span style={{ ...textStyle, ...motionStyle }}>{text}</span>;
+  // Grouped into runs (not one span per grapheme — these styles don't
+  // animate per-letter, so there's no need for that many elements): a
+  // plain-text run renders as a bare string inheriting textStyle
+  // normally, an emoji run gets its stroke canceled and is dimmed via
+  // opacity instead of color, same reasoning as emojiGraphemeStyle above.
+  const runs: { text: string; isEmoji: boolean }[] = [];
+  for (const char of graphemes(text)) {
+    const isEmoji = EMOJI_TEST_REGEX.test(char);
+    const last = runs[runs.length - 1];
+    if (last && last.isEmoji === isEmoji) {
+      last.text += char;
+    } else {
+      runs.push({ text: char, isEmoji });
+    }
+  }
+
+  return (
+    <span style={{ ...textStyle, ...motionStyle }}>
+      {runs.map((run, i) =>
+        run.isEmoji ? (
+          <span key={i} style={emojiGraphemeStyle(isCurrent)}>
+            {run.text}
+          </span>
+        ) : (
+          run.text
+        ),
+      )}
+    </span>
+  );
 };
 
 /**
@@ -641,6 +749,7 @@ const RankingList: React.FC<{
                   framesSinceStart={frame - clip.from}
                   fps={fps}
                   animationStyle={clip.animationStyle}
+                  isCurrent={isCurrent}
                   textStyle={{
                     fontSize: titleFontSize,
                     // "Faded" comes from a genuinely light weight, not a

@@ -1033,12 +1033,16 @@ const SortableClipRow: React.FC<{
 
 // Phase 10: ClipUploader owns `clips` as uncontrolled internal state (same
 // as it always has — see onClipsChange above), so page.tsx can't just pass
-// a new sticker down as a prop the normal way. This ref exposes the one
-// imperative entry point page.tsx needs: "a sticker was just placed by
-// clicking the preview, add it to this clip." Nothing else reaches in from
-// outside this component.
+// a new sticker down as a prop the normal way. This ref exposes the
+// imperative entry points page.tsx needs from outside: "a sticker was just
+// placed by clicking the preview, add it to this clip" (Phase 10), and
+// "apply this animation style to every clip" (Phase 13, reused by preset
+// loading — the exact same bulk-set the in-panel "Apply to all" control
+// already performs, just triggered from outside instead of from a click
+// inside this component).
 export type ClipUploaderHandle = {
   addSticker: (clipId: string, sticker: Sticker) => void;
+  applyAnimationStyleToAll: (animationStyle: AnimationStyle) => void;
 };
 
 export const ClipUploader = forwardRef<
@@ -1416,25 +1420,6 @@ export const ClipUploader = forwardRef<
     [],
   );
 
-  // The one imperative entry point page.tsx uses after a placement click
-  // on the preview — see the ClipUploaderHandle comment above for why this
-  // has to be a ref rather than a normal prop.
-  useImperativeHandle(
-    ref,
-    () => ({
-      addSticker: (clipId: string, sticker: Sticker) => {
-        setClips((prevClips) =>
-          prevClips.map((clip) =>
-            clip.id === clipId
-              ? { ...clip, stickers: [...clip.stickers, sticker] }
-              : clip,
-          ),
-        );
-      },
-    }),
-    [],
-  );
-
   const handleAnimationStyleChange = useCallback(
     (id: string, animationStyle: AnimationStyle) => {
       setClips((prevClips) =>
@@ -1458,6 +1443,27 @@ export const ClipUploader = forwardRef<
       );
     },
     [],
+  );
+
+  // The imperative entry points page.tsx uses from outside this component:
+  // a sticker placed by clicking the preview (Phase 10), and applying an
+  // animation style to every clip at once (Phase 13's preset loading,
+  // reusing this exact same bulk-set logic).
+  useImperativeHandle(
+    ref,
+    () => ({
+      addSticker: (clipId: string, sticker: Sticker) => {
+        setClips((prevClips) =>
+          prevClips.map((clip) =>
+            clip.id === clipId
+              ? { ...clip, stickers: [...clip.stickers, sticker] }
+              : clip,
+          ),
+        );
+      },
+      applyAnimationStyleToAll: handleApplyAnimationToAll,
+    }),
+    [handleApplyAnimationToAll],
   );
 
   // Switching mode applies its effect immediately — ascending/descending
