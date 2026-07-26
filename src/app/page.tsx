@@ -247,55 +247,43 @@ const Home: NextPage = () => {
     [header],
   );
 
-  // Phase 13 — everything the Presets panel needs to save a snapshot of
-  // the current style, minus `words` (per-video content, not style — see
-  // PresetStyleSchema's comment in constants.ts) and minus
-  // defaultAnimationStyle (a save-time choice made inside PresetManager
-  // itself, not a single live value this page owns).
-  const currentPresetStyle: Omit<PresetStyle, "defaultAnimationStyle"> =
-    useMemo(() => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { words: _words, ...headerStyle } = header;
-      return {
-        header: headerStyle,
-        rankingListStyle,
-        globalCrop,
-        musicVolume: music.volume,
-        musicDuckLevel: music.duckLevel,
-        originalAudioVolume,
-      };
-    }, [header, rankingListStyle, globalCrop, music, originalAudioVolume]);
+  // Phase 13 (corrected) — everything the Presets panel needs to save a
+  // full snapshot of the current style: the header exactly as-is
+  // (including its wording — a preset now captures the header word-for-
+  // word, per explicit request), the global ranking-list style, and one
+  // entry per currently-uploaded clip's rank/badge/title style (never its
+  // title text).
+  const currentPresetStyle: PresetStyle = useMemo(() => {
+    return {
+      header,
+      rankingListStyle,
+      rankStyles: uploadedClips.map((clip) => ({
+        rank: clip.rank,
+        badgeType: clip.badgeType,
+        badgeEmoji: clip.badgeEmoji,
+        badgeStyleOverride: clip.badgeStyleOverride,
+        titleStyleOverride: clip.titleStyleOverride,
+        animationStyle: clip.animationStyle,
+      })),
+    };
+  }, [header, rankingListStyle, uploadedClips]);
 
   // Applies a loaded preset's style to every corresponding piece of state.
-  // Deliberately does NOT touch uploadedClips (content), header.words
-  // (content), music.src/voiceOvers (content) — only the style fields each
-  // already owns. Goes through each editor's own imperative ref (Phase 14)
-  // rather than this component's own setHeader/setRankingListStyle/etc —
-  // those only updated this component's mirror of each editor's state, and
-  // since each editor is what actually re-reports its state up on every
-  // change, calling only the mirror's setter got silently overwritten
-  // right back on the next render. That was a real, pre-existing gap this
-  // fixes, not a Phase 14-only concern.
-  const handleLoadPreset = useCallback(
-    (style: PresetStyle) => {
-      headerEditorRef.current?.loadHeader({ ...header, ...style.header });
-      rankingListStyleEditorRef.current?.loadStyle(style.rankingListStyle);
-      globalCropEditorRef.current?.loadCrop(style.globalCrop);
-      audioEditorRef.current?.loadAudioState({
-        music: {
-          ...music,
-          volume: style.musicVolume,
-          duckLevel: style.musicDuckLevel,
-        },
-        voiceOvers,
-        originalAudioVolume: style.originalAudioVolume,
-      });
-      clipUploaderRef.current?.applyAnimationStyleToAll(
-        style.defaultAnimationStyle,
-      );
-    },
-    [header, music, voiceOvers],
-  );
+  // Deliberately does NOT touch uploadedClips' content (title text, crop,
+  // trim, stickers, footage) — only the header, ranking-list style, and
+  // each rank's badge/title style/animation. Goes through each editor's
+  // own imperative ref (Phase 14) rather than this component's own
+  // setHeader/setRankingListStyle/etc — those only updated this
+  // component's mirror of each editor's state, and since each editor is
+  // what actually re-reports its state up on every change, calling only
+  // the mirror's setter got silently overwritten right back on the next
+  // render. That was a real, pre-existing gap this fixes, not a
+  // Phase 14-only concern.
+  const handleLoadPreset = useCallback((style: PresetStyle) => {
+    headerEditorRef.current?.loadHeader(style.header);
+    rankingListStyleEditorRef.current?.loadStyle(style.rankingListStyle);
+    clipUploaderRef.current?.applyRankStyles(style.rankStyles);
+  }, []);
 
   // Phase 14 — everything a saved project needs to capture, read straight
   // off this component's own mirrored state (kept accurate at all times by

@@ -3,22 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { PresetStyleSchema } from "../../types/constants";
-import {
-  ANIMATION_STYLE_OPTIONS,
-  AnimationStyle,
-} from "./ClipUploader";
 import { loadPresets, Preset, savePresetsToStorage } from "../lib/presets";
 import { Button } from "./Button";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Input } from "./Input";
 
 export type PresetStyle = z.infer<typeof PresetStyleSchema>;
-// Everything a preset captures *except* the default animation style — that
-// one field is a save-time choice made right here in this panel (there's
-// no single live "current" animation value elsewhere in the app to source
-// it from, since animation is set per-clip), not a value page.tsx can
-// hand in the way it hands in header/ranking-list/crop/audio-mix state.
-type PresetStyleWithoutAnimation = Omit<PresetStyle, "defaultAnimationStyle">;
 
 const formatSavedAt = (createdAt: number): string => {
   return new Date(createdAt).toLocaleDateString(undefined, {
@@ -29,12 +19,22 @@ const formatSavedAt = (createdAt: number): string => {
 };
 
 /**
- * Phase 13 — save the current project's full style (header look, ranking
- * list colors/fonts/borders/spacing, final crop, default title animation,
- * audio mix levels) as a named preset, and load any saved preset back onto
- * whatever project is currently open. Deliberately does NOT touch clips,
- * header wording, or uploaded audio files — see PresetStyleSchema's own
- * comment in constants.ts for why that's content, not style.
+ * Phase 13 (corrected) — save the current project's full style (header,
+ * including its exact wording and per-word colors; ranking-list colors/
+ * fonts/borders/spacing; and each rank's badge/title styling and
+ * animation) as a named preset, and load any saved preset back onto
+ * whatever project is currently open.
+ *
+ * Deliberately does NOT capture: the actual clip footage, any clip's
+ * crop/rotation (that's specific to that source video, not a reusable
+ * look), the final-video crop, uploaded music/voice-over files or their
+ * mix levels, or any rank's title *text* — see PresetStyleSchema's own
+ * comment in constants.ts for the full reasoning.
+ *
+ * `currentStyle` already has everything needed to save — including a
+ * live snapshot of every currently-uploaded clip's rank/badge/title
+ * style — so there's no separate save-time-only field to collect here
+ * the way an earlier version of this component needed for animation.
  *
  * Presets list starts empty and is only populated from localStorage inside
  * an effect (not during the initial render) — this keeps the server-
@@ -43,14 +43,12 @@ const formatSavedAt = (createdAt: number): string => {
  * during render.
  */
 export const PresetManager: React.FC<{
-  currentStyle: PresetStyleWithoutAnimation;
+  currentStyle: PresetStyle;
   onLoadPreset: (style: PresetStyle) => void;
 }> = ({ currentStyle, onLoadPreset }) => {
   const [presets, setPresets] = useState<Preset[]>([]);
   const [newPresetName, setNewPresetName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
-  const [animationStyleToSave, setAnimationStyleToSave] =
-    useState<AnimationStyle>("fade");
   const [pendingOverwrite, setPendingOverwrite] = useState<Preset | null>(
     null,
   );
@@ -72,7 +70,7 @@ export const PresetManager: React.FC<{
         id: replaceId ?? crypto.randomUUID(),
         name,
         createdAt: Date.now(),
-        style: { ...currentStyle, defaultAnimationStyle: animationStyleToSave },
+        style: currentStyle,
       };
       setPresets((prevPresets) => {
         const next = replaceId
@@ -84,7 +82,7 @@ export const PresetManager: React.FC<{
       setNewPresetName("");
       setNameError(null);
     },
-    [currentStyle, animationStyleToSave],
+    [currentStyle],
   );
 
   const handleSaveClick = useCallback(() => {
@@ -113,25 +111,6 @@ export const PresetManager: React.FC<{
         <label className="mb-1.5 block text-sm font-medium text-foreground">
           Save current style as a preset
         </label>
-        <div className="mb-2 flex items-center gap-2">
-          <label className="text-xs text-subtitle" htmlFor="preset-animation-style">
-            Default title animation
-          </label>
-          <select
-            id="preset-animation-style"
-            value={animationStyleToSave}
-            onChange={(e) =>
-              setAnimationStyleToSave(e.target.value as AnimationStyle)
-            }
-            className="rounded-geist border border-unfocused-border-color bg-panel px-2 py-1 text-xs text-foreground transition-colors duration-150 focus:border-focused-border-color"
-          >
-            {ANIMATION_STYLE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
         <div className="flex gap-2">
           <div className="flex-1">
             <Input
@@ -150,9 +129,10 @@ export const PresetManager: React.FC<{
           <p className="mt-1.5 text-xs text-geist-error">{nameError}</p>
         ) : (
           <p className="mt-1.5 text-xs text-subtitle">
-            Captures header look, ranking-list style, final crop, default
-            title animation, and audio mix levels — not your clips, header
-            text, or uploaded audio files.
+            Captures your header (its exact text and colors included),
+            ranking-list style, and each rank's badge/title styling and
+            animation — not your clips&apos; footage, crop, or uploaded
+            audio.
           </p>
         )}
       </div>
@@ -235,7 +215,7 @@ export const PresetManager: React.FC<{
       <ConfirmDialog
         open={pendingLoad !== null}
         title={`Load "${pendingLoad?.name}"?`}
-        description="This replaces your current header look, ranking-list style, final crop, default title animation, and audio mix levels. Your clips and their content aren't affected."
+        description="This replaces your current header (including its text and colors) and ranking-list style, and re-applies each rank's saved badge/title styling to whichever clips currently hold those ranks. Your clips' footage, crop, and audio aren't affected. Clips uploaded after loading won't get a rank's saved style automatically — load this preset again once they're in if you want it applied to them too."
         confirmLabel="Load"
         onConfirm={() => {
           if (pendingLoad) {

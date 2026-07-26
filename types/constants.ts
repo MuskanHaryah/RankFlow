@@ -388,33 +388,42 @@ export const GlobalCropSchema = z.object({
   right: z.number(),
 });
 
+// Phase 13 (corrected) — a single rank slot's saved badge/title
+// appearance, independent of which actual clip ends up filling that
+// slot. Matched by `rank` number when a preset is applied — a preset
+// with entries for ranks 1-3 applied to a project with 5 clips only
+// touches whichever clips currently hold ranks 1-3, leaving 4 and 5
+// exactly as they were. Title *text* is deliberately never part of
+// this — only its style, if the person customized one.
+export const PresetRankStyleSchema = z.object({
+  rank: z.number(),
+  badgeType: z.enum(["number", "emoji"]),
+  badgeEmoji: z.string(),
+  badgeStyleOverride: RankStyleOverrideSchema,
+  titleStyleOverride: RankStyleOverrideSchema,
+  animationStyle: AnimationStyleSchema,
+});
+
 // Phase 13 — a named, reusable bundle of *style* settings: every
-// color/font/border/spacing/backdrop/crop/mix preference a person has
-// dialed in, deliberately excluding anything that's this-specific-video
-// *content* rather than a reusable look — the actual clips, the header's
-// literal wording, and any uploaded music/voice-over file. Saved to (and
-// loaded from) localStorage as a named Preset; never sent to the render
-// pipeline directly, which is why this lives as its own schema rather than
-// folded into CompositionProps.
+// color/font/border/spacing/backdrop preference a person has dialed in
+// for the header, the ranking list as a whole, and each individual
+// rank's badge/title — deliberately excluding anything that's this-
+// specific-video *content* or *geometry* rather than a reusable look:
+// the actual clip footage, any clip's crop/rotation (varies clip to
+// clip), the final-video crop, uploaded music/voice-over files and
+// their mix levels, and every rank's title *text*. Saved to (and loaded
+// from) localStorage as a named Preset; never sent to the render
+// pipeline directly, which is why this lives as its own schema rather
+// than folded into CompositionProps.
 export const PresetStyleSchema = z.object({
-  // Every header field except `words` (the literal title text) — a
-  // preset should carry "how the header looks," not what it says.
-  // Deriving this via .omit() keeps it in lockstep automatically if
-  // HeaderSchema ever grows another style field.
-  header: HeaderSchema.omit({ words: true }),
+  // The full header, including its literal wording and per-word
+  // colors — a preset captures the header exactly, word-for-word.
+  header: HeaderSchema,
   rankingListStyle: RankingListStyleSchema,
-  globalCrop: GlobalCropSchema,
-  // The animation a saved preset "remembers" as its house style. Loading a
-  // preset applies this to every clip currently in the project — the same
-  // one-off bulk-set the existing "Apply to all" control already performs,
-  // not a new per-clip mechanic.
-  defaultAnimationStyle: AnimationStyleSchema,
-  // Audio *mix* levels, not the uploaded files themselves — a preset never
-  // carries someone else's music/voice-over file as content, but "music
-  // sits at 50% and ducks to 20%" is a genuine reusable style choice.
-  musicVolume: z.number(),
-  musicDuckLevel: z.number(),
-  originalAudioVolume: z.number(),
+  // One entry per rank that had any badge customization, emoji choice,
+  // or non-default animation at save time — see PresetRankStyleSchema
+  // above.
+  rankStyles: z.array(PresetRankStyleSchema),
 });
 
 export const PresetSchema = z.object({

@@ -60,6 +60,20 @@ export type RankStyleOverride = {
   borderWidth: number;
 } | null;
 
+// Phase 13 (corrected) — mirrors types/constants.ts's
+// PresetRankStyleSchema shape (same decoupling reasoning as
+// RankStyleOverride above). Everything a preset remembers about one rank
+// slot's badge/title appearance and animation — never the title text
+// itself.
+export type PresetRankStyle = {
+  rank: number;
+  badgeType: "number" | "emoji";
+  badgeEmoji: string;
+  badgeStyleOverride: RankStyleOverride;
+  titleStyleOverride: RankStyleOverride;
+  animationStyle: AnimationStyle;
+};
+
 // The subset of the project-level ranking-list style that's relevant to
 // seeding a per-clip override — passed down from page.tsx so that turning
 // an override on pre-fills it with the *current* global look rather than a
@@ -1050,6 +1064,14 @@ const SortableClipRow: React.FC<{
 export type ClipUploaderHandle = {
   addSticker: (clipId: string, sticker: Sticker) => void;
   applyAnimationStyleToAll: (animationStyle: AnimationStyle) => void;
+  // Phase 13 (corrected) — applies a preset's saved per-rank badge/title
+  // styling to whichever *currently uploaded* clips hold those ranks,
+  // matched by rank number. A clip whose rank has no entry in
+  // rankStyles (e.g. the preset only had 3 ranks saved, this project has
+  // 5 clips) is left completely untouched. Title text is never touched
+  // either way — this only ever sets badgeType/badgeEmoji/
+  // badgeStyleOverride/titleStyleOverride/animationStyle.
+  applyRankStyles: (rankStyles: PresetRankStyle[]) => void;
   // Phase 14 — replaces the whole clips array wholesale, for restoring a
   // saved project. Every clip loaded this way already has uploadStatus:
   // "done" and a real server src, so it never touches the file-reading/
@@ -1482,6 +1504,24 @@ export const ClipUploader = forwardRef<
         );
       },
       applyAnimationStyleToAll: handleApplyAnimationToAll,
+      applyRankStyles: (rankStyles: PresetRankStyle[]) => {
+        setClips((prevClips) =>
+          prevClips.map((clip) => {
+            const saved = rankStyles.find((rs) => rs.rank === clip.rank);
+            if (!saved) {
+              return clip;
+            }
+            return {
+              ...clip,
+              badgeType: saved.badgeType,
+              badgeEmoji: saved.badgeEmoji,
+              badgeStyleOverride: saved.badgeStyleOverride,
+              titleStyleOverride: saved.titleStyleOverride,
+              animationStyle: saved.animationStyle,
+            };
+          }),
+        );
+      },
       loadClips: (loadedClips: UploadedClip[]) => {
         setClips(loadedClips);
       },
