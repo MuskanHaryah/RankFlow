@@ -2,7 +2,7 @@
 
 import { Player, PlayerRef } from "@remotion/player";
 import type { NextPage } from "next";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import {
   CompositionProps,
@@ -36,7 +36,12 @@ import {
 } from "../components/GlobalCropEditor";
 import { PresetManager, PresetStyle } from "../components/PresetManager";
 import { ProjectManager } from "../components/ProjectManager";
-import { ProjectState } from "../lib/projectStorage";
+import {
+  clearDraft,
+  loadDraft,
+  ProjectState,
+  saveDraft,
+} from "../lib/projectStorage";
 import {
   RankingListStyleEditor,
   RankingListStyleEditorHandle,
@@ -350,7 +355,75 @@ const Home: NextPage = () => {
       originalAudioVolume: defaultMyCompProps.originalAudioVolume,
     });
     setStickerPlacementArmedFor(null);
+    // The autosaved draft (see below) mirrors whatever's on screen — once
+    // the screen is back to empty/default, the draft needs to actually be
+    // gone, not just about to get overwritten with "empty" on the next
+    // debounce tick (a refresh in that brief window would otherwise still
+    // restore the pre-discard project).
+    clearDraft().catch((err) => {
+      console.error("Failed to clear the autosaved draft:", err);
+    });
   }, []);
+
+  // Autosave-on-refresh — separate from Phase 14's explicit named project
+  // saves above. Restores once on mount (this effect), then keeps
+  // resaving on every meaningful change (the effect below). `hydrated`
+  // guards against a real race: this effect's own IndexedDB read is
+  // async, so without the guard the autosave effect below could fire with
+  // the still-default/empty initial state and overwrite a real draft in
+  // the brief window before it's actually loaded back in.
+  const [draftHydrated, setDraftHydrated] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const draft = await loadDraft();
+        if (!cancelled && draft) {
+          // A clip that hadn't finished uploading yet at the moment of
+          // the last autosave can't be restored — its `src` is either a
+          // blob: URL (dead the instant the page reloads, since blob
+          // URLs are scoped to the document that created them) or it
+          // simply never got a durable server path. Rather than restore
+          // a broken-looking row, these are silently dropped; everything
+          // that *had* finished uploading comes back exactly as it was.
+          const restorableClips = draft.clips.filter(
+            (clip) => clip.uploadStatus === "done",
+          );
+          handleLoadProject({ ...draft, clips: restorableClips });
+        }
+      } catch (err) {
+        console.error("Failed to restore the autosaved draft:", err);
+      } finally {
+        if (!cancelled) {
+          setDraftHydrated(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately mount-only: this is a one-time "is there a draft to
+    // restore" check, not something that should re-run if handleLoadProject
+    // happens to get a new identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!draftHydrated) {
+      return;
+    }
+    // Debounced rather than saving on every single keystroke/slider tick —
+    // this is a background safety net, not something that needs to be
+    // instantaneous, and IndexedDB writes on every drag-slider frame would
+    // be wasteful.
+    const timeoutId = setTimeout(() => {
+      saveDraft(getCurrentProjectState()).catch((err) => {
+        console.error("Autosave failed:", err);
+      });
+    }, 800);
+    return () => clearTimeout(timeoutId);
+  }, [draftHydrated, getCurrentProjectState]);
 
   // Phase 10 — the actual "click the preview to place a sticker" handler.
   // Only active while stickerPlacementArmedFor is set (the overlay below
