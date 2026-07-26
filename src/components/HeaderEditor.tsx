@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import { z } from "zod";
 import { HeaderSchema } from "../../types/constants";
 import { InputContainer } from "./Container";
@@ -57,9 +63,16 @@ const HEADER_VERTICAL_OFFSET_NUDGE = 10;
  * after that point re-aligns positionally — same tradeoff every plain-
  * text-editor-with-per-token-styling has, and simplest to reason about.
  */
-export const HeaderEditor: React.FC<{
-  onHeaderChange?: (header: z.infer<typeof HeaderSchema>) => void;
-}> = ({ onHeaderChange }) => {
+export type HeaderEditorHandle = {
+  loadHeader: (header: z.infer<typeof HeaderSchema>) => void;
+};
+
+export const HeaderEditor = forwardRef<
+  HeaderEditorHandle,
+  {
+    onHeaderChange?: (header: z.infer<typeof HeaderSchema>) => void;
+  }
+>(({ onHeaderChange }, ref) => {
   const [headerText, setHeaderText] = useState("");
   const [words, setWords] = useState<HeaderWord[]>([]);
   const [durationMode, setDurationMode] =
@@ -79,6 +92,35 @@ export const HeaderEditor: React.FC<{
   );
   const [verticalOffset, setVerticalOffset] = useState(
     DEFAULT_HEADER_VERTICAL_OFFSET,
+  );
+
+  // Phase 14 (also fixes a Phase 13 gap) — this component owns its state
+  // internally and only ever *reports* it up via onHeaderChange, so a
+  // parent calling its own setHeader(...) — which is all Presets/Projects
+  // previously did — updates the parent's mirror for one render, then gets
+  // silently overwritten right back by this component's own next report-up
+  // effect, since nothing here ever changed. An imperative handle is the
+  // one correct way to push external state (a loaded project or preset)
+  // back into an otherwise-uncontrolled child, same pattern already used
+  // by ClipUploaderHandle.
+  useImperativeHandle(
+    ref,
+    () => ({
+      loadHeader: (header) => {
+        setHeaderText(header.words.map((w) => w.word).join(" "));
+        setWords(header.words);
+        setDurationMode(header.durationMode);
+        setFontSize(header.fontSize);
+        setBackdropMode(header.headerBackdropMode);
+        setShadeOpacity(header.headerBackdropShadeOpacity);
+        setShadeExtraHeight(header.headerBackdropShadeExtraHeight);
+        setExtendCanvasExtraHeight(
+          header.headerBackdropExtendCanvasExtraHeight,
+        );
+        setVerticalOffset(header.verticalOffset);
+      },
+    }),
+    [],
   );
 
   // Same pattern as ClipUploader's onClipsChange: notify the parent via an
@@ -366,4 +408,6 @@ export const HeaderEditor: React.FC<{
       ) : null}
     </InputContainer>
   );
-};
+});
+
+HeaderEditor.displayName = "HeaderEditor";

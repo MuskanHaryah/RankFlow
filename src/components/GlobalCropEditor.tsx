@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import { defaultMyCompProps, GlobalCropSchema } from "../../types/constants";
 import { z } from "zod";
 
@@ -20,9 +26,16 @@ type GlobalCrop = z.infer<typeof GlobalCropSchema>;
  * shows the real result directly — a separate mock preview would just be
  * a second, potentially-drifting copy of the same thing.
  */
-export const GlobalCropEditor: React.FC<{
-  onCropChange?: (crop: GlobalCrop) => void;
-}> = ({ onCropChange }) => {
+export type GlobalCropEditorHandle = {
+  loadCrop: (crop: GlobalCrop) => void;
+};
+
+export const GlobalCropEditor = forwardRef<
+  GlobalCropEditorHandle,
+  {
+    onCropChange?: (crop: GlobalCrop) => void;
+  }
+>(({ onCropChange }, ref) => {
   const [top, setTop] = useState(defaultMyCompProps.globalCrop.top);
   const [bottom, setBottom] = useState(defaultMyCompProps.globalCrop.bottom);
   const [left, setLeft] = useState(defaultMyCompProps.globalCrop.left);
@@ -33,6 +46,19 @@ export const GlobalCropEditor: React.FC<{
   useEffect(() => {
     onCropChange?.({ top, bottom, left, right });
   }, [top, bottom, left, right, onCropChange]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      loadCrop: (crop) => {
+        setTop(crop.top);
+        setBottom(crop.bottom);
+        setLeft(crop.left);
+        setRight(crop.right);
+      },
+    }),
+    [],
+  );
 
   // Clamps a single edge to [0, MAX_INSET] and also against its opposite
   // edge so the two never sum past 90 (leaving at least 10% width/height
@@ -135,4 +161,6 @@ export const GlobalCropEditor: React.FC<{
       </div>
     </div>
   );
-};
+});
+
+GlobalCropEditor.displayName = "GlobalCropEditor";

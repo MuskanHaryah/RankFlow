@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import { z } from "zod";
 import { defaultRankingListStyle, RankingListStyleSchema } from "../../types/constants";
 import { InputContainer } from "./Container";
@@ -37,9 +43,16 @@ const MAX_BORDER_WIDTH = 20;
  * RankStyleOverrideEditor); this is the shared baseline every clip uses
  * unless it does that.
  */
-export const RankingListStyleEditor: React.FC<{
-  onStyleChange?: (style: RankingListStyle) => void;
-}> = ({ onStyleChange }) => {
+export type RankingListStyleEditorHandle = {
+  loadStyle: (style: RankingListStyle) => void;
+};
+
+export const RankingListStyleEditor = forwardRef<
+  RankingListStyleEditorHandle,
+  {
+    onStyleChange?: (style: RankingListStyle) => void;
+  }
+>(({ onStyleChange }, ref) => {
   const [scale, setScale] = useState(defaultRankingListStyle.scale);
   const [badgeScale, setBadgeScale] = useState(
     defaultRankingListStyle.badgeScale,
@@ -144,6 +157,33 @@ export const RankingListStyleEditor: React.FC<{
       ),
     );
   }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      loadStyle: (style) => {
+        setScale(style.scale);
+        setBadgeScale(style.badgeScale);
+        setTitleScale(style.titleScale);
+        setVerticalOffset(style.verticalOffset);
+        setRowGap(style.rowGap);
+        setItemGap(style.itemGap);
+        setBadgeColor(style.badgeColor);
+        setBadgeFontFamily(style.badgeFontFamily);
+        setBadgeFontWeight(style.badgeFontWeight);
+        setBadgeBorderEnabled(style.badgeBorderEnabled);
+        setBadgeBorderColor(style.badgeBorderColor);
+        setBadgeBorderWidth(style.badgeBorderWidth);
+        setTitleColor(style.titleColor);
+        setTitleFontFamily(style.titleFontFamily);
+        setTitleFontWeight(style.titleFontWeight);
+        setTitleBorderEnabled(style.titleBorderEnabled);
+        setTitleBorderColor(style.titleBorderColor);
+        setTitleBorderWidth(style.titleBorderWidth);
+      },
+    }),
+    [],
+  );
 
   return (
     <InputContainer>
@@ -422,4 +462,6 @@ export const RankingListStyleEditor: React.FC<{
       </div>
     </InputContainer>
   );
-};
+});
+
+RankingListStyleEditor.displayName = "RankingListStyleEditor";

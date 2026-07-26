@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import {
   MAX_ORIGINAL_AUDIO_VOLUME,
   MAX_VOICE_OVER_VOLUME,
@@ -21,6 +27,11 @@ type UploadStatus = "uploading" | "done" | "error";
 
 export type MusicState = {
   file: File | null;
+  // Persisted independently of `file` — a File object can't survive a
+  // page reload/project load, but the display name still needs to show
+  // up for a track that was restored from a saved project. Empty string
+  // when there's no track at all.
+  sourceFileName: string;
   src: string | null;
   durationInFrames: number | null; // null = still being read, or no file yet
   uploadStatus: UploadStatus | null; // null = no file yet
@@ -30,7 +41,11 @@ export type MusicState = {
 
 export type VoiceOverClip = {
   id: string;
-  file: File;
+  // Nullable for the same reason as MusicState.file above — a voice-over
+  // restored from a saved project has a real, playable `src` (the file is
+  // durably stored server-side) but no in-memory File object anymore.
+  file: File | null;
+  sourceFileName: string;
   src: string;
   durationInFrames: number | null; // null = still being read
   uploadStatus: UploadStatus;
@@ -43,6 +58,7 @@ export type VoiceOverClip = {
 
 const DEFAULT_MUSIC_STATE: MusicState = {
   file: null,
+  sourceFileName: "",
   src: null,
   durationInFrames: null,
   uploadStatus: null,
@@ -257,17 +273,32 @@ const SecondsInput: React.FC<{
  * voice-over and setting its duck window not require guessing seconds by
  * hand: scrub the preview to the right moment, then click the button.
  */
-export const AudioEditor: React.FC<{
-  onMusicChange?: (music: MusicState) => void;
-  onVoiceOversChange?: (voiceOvers: VoiceOverClip[]) => void;
-  onOriginalAudioVolumeChange?: (volume: number) => void;
-  getCurrentPreviewSeconds: () => number;
-}> = ({
-  onMusicChange,
-  onVoiceOversChange,
-  onOriginalAudioVolumeChange,
-  getCurrentPreviewSeconds,
-}) => {
+export type AudioEditorHandle = {
+  loadAudioState: (state: {
+    music: MusicState;
+    voiceOvers: VoiceOverClip[];
+    originalAudioVolume: number;
+  }) => void;
+};
+
+export const AudioEditor = forwardRef<
+  AudioEditorHandle,
+  {
+    onMusicChange?: (music: MusicState) => void;
+    onVoiceOversChange?: (voiceOvers: VoiceOverClip[]) => void;
+    onOriginalAudioVolumeChange?: (volume: number) => void;
+    getCurrentPreviewSeconds: () => number;
+  }
+>(
+  (
+    {
+      onMusicChange,
+      onVoiceOversChange,
+      onOriginalAudioVolumeChange,
+      getCurrentPreviewSeconds,
+    },
+    ref,
+  ) => {
   const [music, setMusic] = useState<MusicState>(DEFAULT_MUSIC_STATE);
   const [voiceOvers, setVoiceOvers] = useState<VoiceOverClip[]>([]);
   // Phase 12 (extended) — one master volume for every clip's original
@@ -288,6 +319,23 @@ export const AudioEditor: React.FC<{
     onOriginalAudioVolumeChange?.(originalAudioVolume);
   }, [originalAudioVolume, onOriginalAudioVolumeChange]);
 
+  // Phase 14 — restoring a saved project's music/voice-overs/master volume
+  // has to go through this (same reasoning as HeaderEditor's loadHeader):
+  // this component owns music/voiceOvers/originalAudioVolume internally,
+  // so an external setter alone would get silently overwritten right back
+  // by this component's own next report-up effect.
+  useImperativeHandle(
+    ref,
+    () => ({
+      loadAudioState: (state) => {
+        setMusic(state.music);
+        setVoiceOvers(state.voiceOvers);
+        setOriginalAudioVolume(state.originalAudioVolume);
+      },
+    }),
+    [],
+  );
+
   const handleMusicFileSelected: React.ChangeEventHandler<HTMLInputElement> =
     useCallback((e) => {
       const file = e.currentTarget.files?.[0];
@@ -298,6 +346,7 @@ export const AudioEditor: React.FC<{
       const src = URL.createObjectURL(file);
       setMusic({
         file,
+        sourceFileName: file.name,
         src,
         durationInFrames: null,
         uploadStatus: "uploading",
@@ -366,6 +415,7 @@ export const AudioEditor: React.FC<{
         const newVoiceOver: VoiceOverClip = {
           id,
           file,
+          sourceFileName: file.name,
           src,
           durationInFrames: null,
           uploadStatus: "uploading",
@@ -480,7 +530,7 @@ export const AudioEditor: React.FC<{
         <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-subtitle">
           <span aria-hidden="true">🎵</span> Background music
         </p>
-        {!music.file ? (
+        {!music.src ? (
           <label className="flex w-fit cursor-pointer items-center gap-2 rounded-geist border border-dashed border-unfocused-border-color px-3 py-2 text-sm text-subtitle transition-colors duration-150 hover:border-accent hover:text-accent">
             <svg
               width="16"
@@ -508,7 +558,7 @@ export const AudioEditor: React.FC<{
           <div className="flex flex-col gap-3 rounded-geist border border-unfocused-border-color bg-background p-geist-half">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                {music.file.name}
+                {music.sourceFileName || "Music track"}
               </span>
               <span className="font-mono-tabular text-xs text-subtitle">
                 {music.durationInFrames === null
@@ -618,7 +668,7 @@ export const AudioEditor: React.FC<{
                 {index + 1}
               </span>
               <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                {vo.file.name}
+                {vo.sourceFileName || "Voice-over"}
               </span>
               <span className="font-mono-tabular text-xs text-subtitle">
                 {vo.durationInFrames === null
@@ -771,4 +821,7 @@ export const AudioEditor: React.FC<{
       </div>
     </InputContainer>
   );
-};
+  },
+);
+
+AudioEditor.displayName = "AudioEditor";

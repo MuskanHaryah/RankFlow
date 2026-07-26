@@ -138,7 +138,14 @@ const STICKER_MAX_SIZE_PERCENT = 40;
 
 export type UploadedClip = {
   id: string;
-  file: File;
+  // Nullable: a clip restored from a saved project has a real, playable
+  // `src` (the file is durably stored server-side, under /uploads/) but no
+  // in-memory File object anymore — those can't survive a page reload.
+  file: File | null;
+  // Persisted independently of `file` for the same reason — always
+  // available for display even when `file` is null.
+  sourceFileName: string;
+  sourceFileSizeBytes: number;
   src: string; // starts as a blob: URL for instant preview, later replaced by the real uploaded server path
   order: number; // playback sequence position
   durationInFrames: number | null; // effective (trimmed) length; null = still being read
@@ -849,10 +856,10 @@ const SortableClipRow: React.FC<{
           #{clip.order}
         </span>
         <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-          {clip.file.name}
+          {clip.sourceFileName}
         </span>
         <span className="font-mono-tabular text-xs text-subtitle">
-          {(clip.file.size / 1024 / 1024).toFixed(1)} MB
+          {(clip.sourceFileSizeBytes / 1024 / 1024).toFixed(1)} MB
         </span>
         <span className="font-mono-tabular text-xs text-subtitle">
           {clip.durationInFrames === null
@@ -1043,6 +1050,11 @@ const SortableClipRow: React.FC<{
 export type ClipUploaderHandle = {
   addSticker: (clipId: string, sticker: Sticker) => void;
   applyAnimationStyleToAll: (animationStyle: AnimationStyle) => void;
+  // Phase 14 — replaces the whole clips array wholesale, for restoring a
+  // saved project. Every clip loaded this way already has uploadStatus:
+  // "done" and a real server src, so it never touches the file-reading/
+  // upload effect above (that only ever runs from onFilesSelected).
+  loadClips: (clips: UploadedClip[]) => void;
 };
 
 export const ClipUploader = forwardRef<
@@ -1116,6 +1128,8 @@ export const ClipUploader = forwardRef<
       const newClips: UploadedClip[] = trimmedFiles.map((file, index) => ({
         id: crypto.randomUUID(),
         file,
+        sourceFileName: file.name,
+        sourceFileSizeBytes: file.size,
         src: URL.createObjectURL(file),
         order: index + 1,
         durationInFrames: null,
@@ -1145,8 +1159,14 @@ export const ClipUploader = forwardRef<
 
       // Duration/resolution reading and server upload run independently and
       // in parallel per clip — neither depends on the other finishing first.
-      newClips.forEach((clip) => {
-        getVideoMetadata(clip.file)
+      // Paired against trimmedFiles (not newClips[i].file) since that's the
+      // one place a real, guaranteed-non-null File is guaranteed to exist —
+      // newClips itself is typed with file: File | null to also allow
+      // clips restored from a saved project (Phase 14), which never go
+      // through this path at all.
+      newClips.forEach((clip, index) => {
+        const file = trimmedFiles[index];
+        getVideoMetadata(file)
           .then(({ durationSeconds, width, height }) => {
             const durationInFrames = Math.round(durationSeconds * FPS);
 
@@ -1169,7 +1189,7 @@ export const ClipUploader = forwardRef<
             );
 
             console.log(
-              `Metadata read for "${clip.file.name}": ${durationSeconds.toFixed(
+              `Metadata read for "${file.name}": ${durationSeconds.toFixed(
                 2,
               )}s (${durationInFrames} frames at ${FPS}fps), ${width}x${height}`,
             );
@@ -1177,11 +1197,11 @@ export const ClipUploader = forwardRef<
           .catch((err) => {
             console.error(err);
             setWarning(
-              `Could not read duration for "${clip.file.name}" — try a different file.`,
+              `Could not read duration for "${file.name}" — try a different file.`,
             );
           });
 
-        uploadClipToServer(clip.file)
+        uploadClipToServer(file)
           .then((serverUrl) => {
             setClips((prevClips) =>
               prevClips.map((prevClip) =>
@@ -1191,7 +1211,7 @@ export const ClipUploader = forwardRef<
               ),
             );
 
-            console.log(`Uploaded "${clip.file.name}" -> ${serverUrl}`);
+            console.log(`Uploaded "${file.name}" -> ${serverUrl}`);
           })
           .catch((err) => {
             console.error(err);
@@ -1203,7 +1223,7 @@ export const ClipUploader = forwardRef<
               ),
             );
             setWarning(
-              `Could not upload "${clip.file.name}" to the server — export will fail until this is fixed.`,
+              `Could not upload "${file.name}" to the server — export will fail until this is fixed.`,
             );
           });
       });
@@ -1462,6 +1482,9 @@ export const ClipUploader = forwardRef<
         );
       },
       applyAnimationStyleToAll: handleApplyAnimationToAll,
+      loadClips: (loadedClips: UploadedClip[]) => {
+        setClips(loadedClips);
+      },
     }),
     [handleApplyAnimationToAll],
   );
@@ -1644,7 +1667,7 @@ export const ClipUploader = forwardRef<
         title="Remove this clip?"
         description={
           pendingDeleteClip
-            ? `"${pendingDeleteClip.file.name}" will be removed from the project. This can't be undone.`
+            ? `"${pendingDeleteClip.sourceFileName}" will be removed from the project. This can't be undone.`
             : undefined
         }
         confirmLabel="Remove"
