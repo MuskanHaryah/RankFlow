@@ -22,8 +22,23 @@ type RenderJob = {
 // slower poll once the queue is idle, so a job added from a different tab
 // (or a different project loaded later in this same tab) still eventually
 // shows up here without needing this panel actively watched.
-const ACTIVE_POLL_MS = 1500;
+//
+// 2500ms (not faster) during an active render specifically: an actual
+// `remotion render` (headless Chrome + ffmpeg) can peg every CPU core on
+// a single machine hard enough that the dev server itself becomes
+// starved for a moment — polling less aggressively during exactly that
+// window means fewer requests competing for the little CPU time the
+// server process does get.
+const ACTIVE_POLL_MS = 2500;
 const IDLE_POLL_MS = 8000;
+// A poll failing (including a response body that comes back truncated/
+// empty mid-render — see the consecutiveFailures handling below) doesn't
+// mean the render itself failed; the actual job runs server-side,
+// completely decoupled from whether this panel's polling succeeds. Only
+// treat it as a real problem worth showing after several *consecutive*
+// misses — a single blip during a CPU-heavy render is expected, not an
+// error.
+const CONSECUTIVE_FAILURES_BEFORE_SHOWING_ERROR = 3;
 
 const formatElapsed = (ms: number): string => {
   const seconds = Math.max(0, Math.round(ms / 1000));
@@ -89,20 +104,37 @@ export const RenderQueuePanel: React.FC = () => {
   useEffect(() => {
     jobsRef.current = jobs;
   }, [jobs]);
+  const consecutiveFailuresRef = useRef(0);
 
   const poll = useCallback(async () => {
     try {
       const response = await fetch("/api/render-jobs");
+      // A response body that comes back empty/truncated (the response
+      // succeeded at the HTTP level, but the connection got cut short
+      // while the process was starved mid-render) throws here with
+      // "Unexpected end of JSON input" — handled the same as a network
+      // failure below, since from this panel's point of view they're
+      // equally transient and equally unrelated to whether the actual
+      // render job is still fine.
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Could not load the render queue.");
       }
       setJobs(data.jobs ?? []);
       setLoadError(null);
+      consecutiveFailuresRef.current = 0;
     } catch (err) {
-      setLoadError(
-        err instanceof Error ? err.message : "Could not load the render queue.",
-      );
+      consecutiveFailuresRef.current += 1;
+      if (
+        consecutiveFailuresRef.current >=
+        CONSECUTIVE_FAILURES_BEFORE_SHOWING_ERROR
+      ) {
+        setLoadError(
+          err instanceof Error
+            ? err.message
+            : "Could not load the render queue.",
+        );
+      }
     } finally {
       const hasActiveJob = jobsRef.current.some(
         (job) => job.status === "queued" || job.status === "rendering",
@@ -142,6 +174,8 @@ export const RenderQueuePanel: React.FC = () => {
     }
   };
 
+  const hasRenderingJob = jobs.some((job) => job.status === "rendering");
+
   return (
     <InputContainer>
       <label className="text-sm font-medium">Render queue</label>
@@ -149,6 +183,13 @@ export const RenderQueuePanel: React.FC = () => {
         Renders run one at a time in the background — keep editing (even
         switch to a different project) while these finish.
       </p>
+      {hasRenderingJob ? (
+        <p className="text-[11px] text-accent">
+          A render is using your whole CPU right now — uploads, previews,
+          and this page may feel slow or briefly unresponsive until it
+          finishes. That's expected, not a sign anything broke.
+        </p>
+      ) : null}
 
       {loadError ? <ErrorComp message={loadError}></ErrorComp> : null}
 

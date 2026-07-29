@@ -64,6 +64,18 @@ const normalizeVideo = async (
     inputPath,
     "-c:v",
     "libx264",
+    // This step's only job is decode-safety (constant frame rate, a
+    // predictable pixel format, moov atom at the front) — not delivering
+    // final quality, since the actual export re-encodes everything again
+    // from scratch anyway. libx264's default preset ("medium") optimizes
+    // for compression efficiency, which is the wrong tradeoff here: it
+    // burns far more CPU than this step needs, and that CPU cost stacks
+    // with whatever else is running (an active render, another upload)
+    // on the same machine. "veryfast" cuts encode time substantially with
+    // no visible impact on the final video, since this file gets
+    // re-encoded again regardless.
+    "-preset",
+    "veryfast",
     "-pix_fmt",
     "yuv420p",
     "-r",
