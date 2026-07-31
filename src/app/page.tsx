@@ -656,10 +656,27 @@ const Home: NextPage = () => {
             </Section>
           </div>
 
-          {/* Preview — pinned on the right on desktop, on top on mobile
-              (matching where it already sat before this layout change) */}
+          {/* Preview — pinned on the right on desktop, on top on mobile.
+              Capped to the visible viewport height (not just the sidebar's
+              width) via aspect-ratio + max-height: without this, a tall
+              9:16 video filling the full ~420px column width renders at
+              ~746px tall, which is routinely taller than what's actually
+              visible under the sticky header — so the only way to see the
+              bottom of the preview was to scroll the entire page past the
+              whole (much longer) settings column first. Capping by height
+              instead means the preview always fits on screen, at whatever
+              size that allows, rather than always being full column width
+              and sometimes not fitting at all. */}
           <div className="order-1 mb-8 lg:sticky lg:top-[88px] lg:order-2 lg:mb-0">
-            <div className="relative overflow-hidden rounded-geist-lg border border-unfocused-border-color bg-panel shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_24px_60px_-24px_rgba(0,0,0,0.7)]">
+            <div
+              className="relative mx-auto overflow-hidden rounded-geist-lg border border-unfocused-border-color bg-panel shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_24px_60px_-24px_rgba(0,0,0,0.7)]"
+              style={{
+                aspectRatio: `${VIDEO_WIDTH} / ${compositionHeight}`,
+                maxHeight: "calc(100vh - 140px)",
+                width: "auto",
+                maxWidth: "100%",
+              }}
+            >
               <Player
                 ref={playerRef}
                 component={Main}
@@ -670,6 +687,7 @@ const Home: NextPage = () => {
                 compositionWidth={VIDEO_WIDTH}
                 style={{
                   width: "100%",
+                  height: "100%",
                 }}
                 controls
                 autoPlay
