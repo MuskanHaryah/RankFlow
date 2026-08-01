@@ -435,6 +435,50 @@ export const PresetSchema = z.object({
 
 export const PRESETS_STORAGE_KEY = "rankflow-presets";
 
+// Phase 17 — a pre-roll "hook" that plays before the ranking countdown
+// begins, meant to grab attention before the actual ranked content
+// starts (e.g. "let's rank the most beautiful clay DIYs" over a short
+// teaser clip). Not one of the ranked clips itself — it lives entirely
+// outside the `clips` array, and Main.tsx prepends it to the very front
+// of the composition's timeline, shifting every ranked clip's own start
+// later by exactly this much. src === null means no hook has been added,
+// in which case none of this renders and the video behaves exactly as it
+// always has (the first ranked clip starts at frame 0).
+export const HookSchema = z.object({
+  src: z.string().nullable(),
+  durationInFrames: z.number(),
+  // How the hook video itself appears at frame 0 of the whole video.
+  introAnimation: z.enum(["none", "fade", "slideUp", "zoomIn"]),
+  // The transition effect played across the boundary between the hook
+  // ending and the first ranked clip starting — the "closing animation
+  // so the ranking process starts" moment. Centered on that boundary
+  // (half plays over the hook's own tail, half over the first ranked
+  // clip's opening), so it reads as a join between the two rather than
+  // an effect tacked onto only one side of the cut.
+  outroAnimation: z.enum(["none", "fade", "wipe", "zoomFlash"]),
+  outroDurationInFrames: z.number(),
+});
+
+export const defaultHook: z.infer<typeof HookSchema> = {
+  src: null,
+  durationInFrames: 0,
+  introAnimation: "fade",
+  outroAnimation: "wipe",
+  outroDurationInFrames: 15, // 0.5s at 30fps
+};
+
+// Bounds for the outro transition duration slider — long enough to read
+// as a deliberate transition, short enough to never eat into either the
+// hook or the first ranked clip's own watch time.
+export const HOOK_OUTRO_MIN_DURATION_SECONDS = 0.2;
+export const HOOK_OUTRO_MAX_DURATION_SECONDS = 1.5;
+// How long the hook's own intro animation takes, in frames. A fixed
+// constant rather than a person-configurable slider — unlike the outro
+// (a real creative choice, and one that has to line up with an exact
+// cut point), the intro is just "ease in rather than pop in," and one
+// sensible speed covers that for every intro style.
+export const HOOK_INTRO_DURATION_IN_FRAMES = 15;
+
 export const CompositionProps = z.object({
   clips: z.array(ClipSchema),
   header: HeaderSchema,
@@ -443,6 +487,7 @@ export const CompositionProps = z.object({
   voiceOvers: z.array(VoiceOverSchema),
   originalAudioVolume: z.number(),
   globalCrop: GlobalCropSchema,
+  hook: HookSchema,
 });
 
 export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
@@ -464,6 +509,7 @@ export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
   voiceOvers: [],
   originalAudioVolume: DEFAULT_ORIGINAL_AUDIO_VOLUME,
   globalCrop: { top: 0, bottom: 0, left: 0, right: 0 },
+  hook: defaultHook,
 };
 
 // How many seconds the header stays on screen when durationMode is

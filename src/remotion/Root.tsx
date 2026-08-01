@@ -23,14 +23,21 @@ export const RemotionRoot: React.FC = () => {
         height={VIDEO_HEIGHT}
         defaultProps={defaultMyCompProps}
         calculateMetadata={async ({ props }) => {
-          // Total video length = sum of every clip's duration. This runs
-          // automatically whenever the clips array changes, so the CLI
-          // render (Step 4) always uses the correct real total — we never
-          // have to manually keep a duration number in sync by hand.
-          const totalDuration = props.clips.reduce(
+          // Total video length = the hook's own duration (Phase 17, 0 if
+          // there isn't one) plus the sum of every clip's duration. This
+          // runs automatically whenever the clips array or hook changes,
+          // so the CLI render (Step 4) always uses the correct real
+          // total — we never have to manually keep a duration number in
+          // sync by hand.
+          const hookDuration =
+            props.hook.src && props.hook.durationInFrames > 0
+              ? props.hook.durationInFrames
+              : 0;
+          const clipsDuration = props.clips.reduce(
             (sum, clip) => sum + clip.durationInFrames,
             0,
           );
+          const totalDuration = hookDuration + clipsDuration;
 
           // Phase 8, part 2: in "extendCanvas" mode the composition itself
           // grows taller by the header's measured height (plus any manual

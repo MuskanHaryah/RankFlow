@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   CompositionProps,
   HEADER_INTRO_SECONDS,
+  HOOK_INTRO_DURATION_IN_FRAMES,
   computeInsetCropTransform,
   isClipVertical,
 } from "../../../types/constants";
@@ -27,6 +28,7 @@ export type ClipRange = Clip & { from: number; to: number };
 export type Sticker = Clip["stickers"][number];
 export type Music = z.infer<typeof CompositionProps>["music"];
 export type VoiceOver = z.infer<typeof CompositionProps>["voiceOvers"][number];
+export type Hook = z.infer<typeof CompositionProps>["hook"];
 type HeaderProps = z.infer<typeof CompositionProps>["header"];
 type RankingListStyleProps = z.infer<typeof CompositionProps>["rankingListStyle"];
 
@@ -116,7 +118,7 @@ const textStrokeStyle = (
 // renders with) fully supports it. A constructed RegExp isn't a literal,
 // so it isn't subject to that compile-time restriction.
 const EMOJI_TEST_REGEX = new RegExp(
-  "\\p{Extended_Pictographic}|\\p{Regional_Indicator}|[\\u200D\\uFE0F\\u{1F3FB}-\\u{1F3FF}]",
+  "\\p{Extended_Pictographic}|\\p{Regional_Indicator}|\\u200D|\\uFE0F|[\\u{1F3FB}-\\u{1F3FF}]",
   "u",
 );
 
@@ -553,14 +555,165 @@ const ClipVideo: React.FC<{
 };
 
 /**
+ * Phase 17 — the pre-roll hook video itself, always occupying frames
+ * [0, hook.durationInFrames) of the whole composition (the Sequence
+ * wrapping this in Main below is what makes frame 0 here == the video's
+ * own frame 0, so no offset math is needed the way ranked clips need
+ * clip.from). Renders nothing when there's no hook.
+ *
+ * Its own audio goes through the exact same getFinalClipVolume as every
+ * ranked clip — a voice-over placed over the hook (e.g. "let's rank the
+ * most beautiful clay DIYs") ducks the hook's own footage audio
+ * underneath it exactly the way it would for a ranked clip.
+ */
+const HookTrack: React.FC<{
+  hook: Hook;
+  voiceOvers: VoiceOver[];
+  originalAudioVolume: number;
+}> = ({ hook, voiceOvers, originalAudioVolume }) => {
+  const frame = useCurrentFrame();
+
+  if (!hook.src || hook.durationInFrames <= 0) {
+    return null;
+  }
+
+  const volume = (localFrame: number) =>
+    getFinalClipVolume(localFrame, voiceOvers, originalAudioVolume);
+
+  const progress = interpolate(
+    frame,
+    [0, HOOK_INTRO_DURATION_IN_FRAMES],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+
+  let introStyle: React.CSSProperties = {};
+  if (hook.introAnimation === "fade") {
+    introStyle = { opacity: progress };
+  } else if (hook.introAnimation === "slideUp") {
+    introStyle = {
+      opacity: progress,
+      transform: `translateY(${interpolate(progress, [0, 1], [40, 0])}px)`,
+    };
+  } else if (hook.introAnimation === "zoomIn") {
+    introStyle = {
+      opacity: progress,
+      transform: `scale(${interpolate(progress, [0, 1], [1.15, 1])})`,
+    };
+  }
+
+  return (
+    <Video
+      src={hook.src}
+      volume={volume}
+      objectFit="cover"
+      style={{ width: "100%", height: "100%", ...introStyle }}
+    />
+  );
+};
+
+/**
+ * Phase 17 — the transition effect across the boundary between the hook
+ * ending and the first ranked clip starting (the "closing animation" that
+ * marks the ranking process beginning). Rendered as a full-screen overlay
+ * above literally everything else (video, header, ranking list) — a
+ * transition needs to read as covering the whole frame, not just the
+ * video layer underneath the header.
+ *
+ * `frame` here is deliberately read via useCurrentFrame() at Main's own
+ * top level, NOT nested inside any Sequence — so it's already the
+ * absolute composition frame, directly comparable to hookDurationInFrames
+ * without any offset math.
+ */
+const HookOutroTransition: React.FC<{
+  hook: Hook;
+  hookDurationInFrames: number;
+}> = ({ hook, hookDurationInFrames }) => {
+  const frame = useCurrentFrame();
+
+  if (
+    !hook.src ||
+    hookDurationInFrames <= 0 ||
+    hook.outroAnimation === "none"
+  ) {
+    return null;
+  }
+
+  const halfDuration = hook.outroDurationInFrames / 2;
+  const windowStart = hookDurationInFrames - halfDuration;
+  const windowEnd = hookDurationInFrames + halfDuration;
+
+  if (frame < windowStart || frame > windowEnd) {
+    return null;
+  }
+
+  // Shared by "fade" and "zoomFlash" — both are a ramp up to full
+  // intensity exactly at the cut, then back down, just with a different
+  // color/interpretation of what "full intensity" covers the screen with.
+  const rampToCutAndBack = (): number =>
+    frame < hookDurationInFrames
+      ? interpolate(frame, [windowStart, hookDurationInFrames], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })
+      : interpolate(frame, [hookDurationInFrames, windowEnd], [1, 0], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        });
+
+  if (hook.outroAnimation === "fade") {
+    return (
+      <AbsoluteFill
+        style={{ backgroundColor: "black", opacity: rampToCutAndBack() }}
+      />
+    );
+  }
+
+  if (hook.outroAnimation === "zoomFlash") {
+    return (
+      <AbsoluteFill
+        style={{ backgroundColor: "white", opacity: rampToCutAndBack() }}
+      />
+    );
+  }
+
+  // "wipe" — a black panel slides fully across the frame left-to-right,
+  // covering the cut point itself at the midpoint, then continues off the
+  // far edge to reveal whatever's now playing underneath.
+  const wipeProgress = interpolate(frame, [windowStart, windowEnd], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const translateXPercent = interpolate(wipeProgress, [0, 1], [-100, 100]);
+  return (
+    <AbsoluteFill style={{ overflow: "hidden" }}>
+      <AbsoluteFill
+        style={{
+          backgroundColor: "black",
+          transform: `translateX(${translateXPercent}%)`,
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
+/**
  * Computed once, shared by both the video Sequence stack below and the
  * ranking list overlay — if these were computed twice with even slightly
  * different logic, the overlay's reveal timing could silently drift out
  * of sync with what's actually playing in the video.
+ *
+ * `startOffset` (Phase 17) shifts every clip's from/to later by this many
+ * frames — how the hook, when one exists, pushes the entire ranked
+ * countdown back to start right after it instead of at frame 0. Defaults
+ * to 0, identical to every call site before the hook existed.
  */
-export const computeClipRanges = (clips: Clip[]): ClipRange[] => {
+export const computeClipRanges = (
+  clips: Clip[],
+  startOffset: number = 0,
+): ClipRange[] => {
   const sortedByOrder = clips.slice().sort((a, b) => a.order - b.order);
-  let cursor = 0;
+  let cursor = startOffset;
   return sortedByOrder.map((clip) => {
     const from = cursor;
     const to = cursor + clip.durationInFrames;
@@ -586,19 +739,25 @@ export const computeClipRanges = (clips: Clip[]): ClipRange[] => {
  * after it), music correctly swells back to full volume during them
  * without this needing to change at all.
  */
-const MusicTrack: React.FC<{ music: Music; clipRanges: ClipRange[] }> = ({
-  music,
-  clipRanges,
-}) => {
+const MusicTrack: React.FC<{
+  music: Music;
+  clipRanges: ClipRange[];
+  hookDurationInFrames: number;
+}> = ({ music, clipRanges, hookDurationInFrames }) => {
   if (!music.src || music.durationInFrames <= 0) {
     return null;
   }
 
   const volume = (frame: number) => {
+    // The hook (Phase 17) has its own video audio too, same as any ranked
+    // clip — music ducks under it exactly the same way.
+    const isDuringHookAudio = frame < hookDurationInFrames;
     const isDuringClipAudio = clipRanges.some(
       (range) => frame >= range.from && frame < range.to,
     );
-    return music.volume * (isDuringClipAudio ? music.duckLevel : 1);
+    return (
+      music.volume * (isDuringHookAudio || isDuringClipAudio ? music.duckLevel : 1)
+    );
   };
 
   return (
@@ -907,8 +1066,16 @@ export const Main = ({
   voiceOvers,
   originalAudioVolume,
   globalCrop,
+  hook,
 }: z.infer<typeof CompositionProps>) => {
-  const clipRanges = computeClipRanges(clips);
+  // Phase 17 — 0 when there's no hook (or its duration hasn't been read
+  // yet), otherwise exactly how many frames the hook occupies at the very
+  // front of the timeline. Every ranked clip's own from/to is shifted
+  // later by this via computeClipRanges' startOffset — the countdown
+  // simply starts right after the hook ends instead of at frame 0.
+  const hookDurationInFrames =
+    hook.src && hook.durationInFrames > 0 ? hook.durationInFrames : 0;
+  const clipRanges = computeClipRanges(clips, hookDurationInFrames);
   const { width } = useVideoConfig();
 
   // Phase 8, part 2: in "extendCanvas" mode the composition (see Root.tsx's
@@ -953,6 +1120,15 @@ export const Main = ({
         }
       >
         <AbsoluteFill style={{ top: videoTrackOffset }}>
+          {hookDurationInFrames > 0 ? (
+            <Sequence durationInFrames={hookDurationInFrames}>
+              <HookTrack
+                hook={hook}
+                voiceOvers={voiceOvers}
+                originalAudioVolume={originalAudioVolume}
+              />
+            </Sequence>
+          ) : null}
           {clipRanges.map((clip) => (
             <Sequence
               key={clip.id}
@@ -992,10 +1168,18 @@ export const Main = ({
         </AbsoluteFill>
         <Header header={header} />
       </AbsoluteFill>
-      <MusicTrack music={music} clipRanges={clipRanges} />
+      <MusicTrack
+        music={music}
+        clipRanges={clipRanges}
+        hookDurationInFrames={hookDurationInFrames}
+      />
       {voiceOvers.map((voiceOver) => (
         <VoiceOverTrack key={voiceOver.id} voiceOver={voiceOver} />
       ))}
+      <HookOutroTransition
+        hook={hook}
+        hookDurationInFrames={hookDurationInFrames}
+      />
     </AbsoluteFill>
   );
 };

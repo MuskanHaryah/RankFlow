@@ -6,6 +6,7 @@ import {
 } from "../../types/constants";
 import type { MusicState, VoiceOverClip } from "../components/AudioEditor";
 import type { UploadedClip } from "../components/ClipUploader";
+import type { HookState } from "../components/HookEditor";
 
 /**
  * Phase 14 — what a saved project actually holds.
@@ -29,6 +30,7 @@ export type ProjectState = {
   music: MusicState;
   voiceOvers: VoiceOverClip[];
   originalAudioVolume: number;
+  hook: HookState;
 };
 
 export type ProjectSnapshot = {
@@ -73,6 +75,11 @@ const toSerializableVoiceOver = (
   voiceOver: VoiceOverClip,
 ): VoiceOverClip => ({
   ...voiceOver,
+  file: null,
+});
+
+const toSerializableHook = (hook: HookState): HookState => ({
+  ...hook,
   file: null,
 });
 
@@ -141,6 +148,7 @@ export const saveNewProject = async (
       clips: state.clips.map(toSerializableClip),
       music: toSerializableMusic(state.music),
       voiceOvers: state.voiceOvers.map(toSerializableVoiceOver),
+      hook: toSerializableHook(state.hook),
     },
   };
 
@@ -177,6 +185,7 @@ export const updateProject = async (
       clips: state.clips.map(toSerializableClip),
       music: toSerializableMusic(state.music),
       voiceOvers: state.voiceOvers.map(toSerializableVoiceOver),
+      hook: toSerializableHook(state.hook),
     },
   };
 
@@ -253,6 +262,7 @@ export const saveDraft = async (state: ProjectState): Promise<void> => {
     clips: state.clips.map(toSerializableClip),
     music: toSerializableMusic(state.music),
     voiceOvers: state.voiceOvers.map(toSerializableVoiceOver),
+    hook: toSerializableHook(state.hook),
   };
 
   return new Promise((resolve, reject) => {

@@ -34,6 +34,7 @@ import {
   GlobalCropEditor,
   GlobalCropEditorHandle,
 } from "../components/GlobalCropEditor";
+import { HookEditor, HookEditorHandle, HookState } from "../components/HookEditor";
 import { PresetManager, PresetStyle } from "../components/PresetManager";
 import { ProjectManager } from "../components/ProjectManager";
 import {
@@ -70,6 +71,21 @@ const EMPTY_MUSIC_STATE: MusicState = {
   duckLevel: defaultMyCompProps.music.duckLevel,
 };
 
+// Phase 17 — same reasoning as EMPTY_MUSIC_STATE above: matches
+// HookEditor.tsx's own DEFAULT_HOOK_STATE, duplicated here for the same
+// "this app-level reset shape belongs next to the other reset values"
+// reason.
+const EMPTY_HOOK_STATE: HookState = {
+  file: null,
+  sourceFileName: "",
+  src: null,
+  durationInFrames: null,
+  uploadStatus: null,
+  introAnimation: defaultMyCompProps.hook.introAnimation,
+  outroAnimation: defaultMyCompProps.hook.outroAnimation,
+  outroDurationInFrames: defaultMyCompProps.hook.outroDurationInFrames,
+};
+
 const Home: NextPage = () => {
   const [uploadedClips, setUploadedClips] = useState<UploadedClip[]>([]);
   // Lifted the same way as uploadedClips: HeaderEditor owns the actual
@@ -99,6 +115,10 @@ const Home: NextPage = () => {
   const [originalAudioVolume, setOriginalAudioVolume] = useState(
     defaultMyCompProps.originalAudioVolume,
   );
+  // Phase 17 — same lifted pattern again: HookEditor owns the actual
+  // hook-editing state (including in-progress upload), this just holds
+  // the latest reported value.
+  const [hook, setHook] = useState<HookState>(EMPTY_HOOK_STATE);
 
   // Phase 10 — which clip (if any) is currently "armed" for click-to-place
   // sticker placement, and which emoji it'll place. Owned here (not inside
@@ -125,6 +145,7 @@ const Home: NextPage = () => {
     useRef<RankingListStyleEditorHandle>(null);
   const globalCropEditorRef = useRef<GlobalCropEditorHandle>(null);
   const audioEditorRef = useRef<AudioEditorHandle>(null);
+  const hookEditorRef = useRef<HookEditorHandle>(null);
 
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
 
@@ -225,6 +246,18 @@ const Home: NextPage = () => {
           duckOriginalLevel: vo.duckOriginalLevel,
         })),
       originalAudioVolume,
+      // Same "only counts once it's a real, done, known-duration upload"
+      // rule as music above.
+      hook:
+        hook.src && hook.uploadStatus === "done" && hook.durationInFrames
+          ? {
+              src: hook.src,
+              durationInFrames: hook.durationInFrames,
+              introAnimation: hook.introAnimation,
+              outroAnimation: hook.outroAnimation,
+              outroDurationInFrames: hook.outroDurationInFrames,
+            }
+          : defaultMyCompProps.hook,
     };
   }, [
     uploadedClips,
@@ -234,13 +267,24 @@ const Home: NextPage = () => {
     music,
     voiceOvers,
     originalAudioVolume,
+    hook,
   ]);
 
   const totalDurationInFrames = useMemo(() => {
-    const total = inputProps.clips.reduce(
+    // Phase 17 — the hook (if any) plays before every ranked clip, adding
+    // its own duration on top of the clips' total rather than overlapping
+    // it — matches exactly how Root.tsx's calculateMetadata computes the
+    // real render's duration, so the live preview's length always agrees
+    // with what actually gets exported.
+    const hookDuration =
+      inputProps.hook.src && inputProps.hook.durationInFrames > 0
+        ? inputProps.hook.durationInFrames
+        : 0;
+    const clipsDuration = inputProps.clips.reduce(
       (sum, clip) => sum + clip.durationInFrames,
       0,
     );
+    const total = hookDuration + clipsDuration;
     return Number.isFinite(total) ? Math.max(total, 1) : 1;
   }, [inputProps]);
 
@@ -307,6 +351,7 @@ const Home: NextPage = () => {
       music,
       voiceOvers,
       originalAudioVolume,
+      hook,
     };
   }, [
     uploadedClips,
@@ -316,6 +361,7 @@ const Home: NextPage = () => {
     music,
     voiceOvers,
     originalAudioVolume,
+    hook,
   ]);
 
   // Phase 14 — restores every piece of a saved project via each editor's
@@ -334,6 +380,7 @@ const Home: NextPage = () => {
       voiceOvers: state.voiceOvers,
       originalAudioVolume: state.originalAudioVolume,
     });
+    hookEditorRef.current?.loadHookState(state.hook);
     setStickerPlacementArmedFor(null);
   }, []);
 
@@ -355,6 +402,7 @@ const Home: NextPage = () => {
       voiceOvers: [],
       originalAudioVolume: defaultMyCompProps.originalAudioVolume,
     });
+    hookEditorRef.current?.loadHookState(EMPTY_HOOK_STATE);
     setStickerPlacementArmedFor(null);
     // The autosaved draft (see below) mirrors whatever's on screen — once
     // the screen is back to empty/default, the draft needs to actually be
@@ -615,6 +663,13 @@ const Home: NextPage = () => {
                 ref={rankingListStyleEditorRef}
                 onStyleChange={setRankingListStyle}
               />
+            </Section>
+            <Section
+              label="Hook"
+              description="A short teaser that plays before the ranking starts"
+              defaultOpen={false}
+            >
+              <HookEditor ref={hookEditorRef} onHookChange={setHook} />
             </Section>
             <Section label="Clips" description="Upload, order, and rank your footage">
               <ClipUploader
