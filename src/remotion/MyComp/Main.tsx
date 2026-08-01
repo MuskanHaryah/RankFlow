@@ -518,6 +518,7 @@ const ClipVideo: React.FC<{
         src={clip.src}
         trimBefore={clip.trimStartFrame}
         trimAfter={clip.trimEndFrame}
+        playbackRate={clip.speed}
         volume={volume}
         objectFit="cover"
         style={{ width: "100%", height: "100%", transform }}
@@ -531,6 +532,7 @@ const ClipVideo: React.FC<{
         src={clip.src}
         trimBefore={clip.trimStartFrame}
         trimAfter={clip.trimEndFrame}
+        playbackRate={clip.speed}
         muted
         objectFit="cover"
         style={{
@@ -545,6 +547,7 @@ const ClipVideo: React.FC<{
           src={clip.src}
           trimBefore={clip.trimStartFrame}
           trimAfter={clip.trimEndFrame}
+          playbackRate={clip.speed}
           volume={volume}
           objectFit="contain"
           style={{ width: "100%", height: "100%" }}
@@ -605,6 +608,9 @@ const HookTrack: React.FC<{
   return (
     <Video
       src={hook.src}
+      trimBefore={hook.trimStartFrame}
+      trimAfter={hook.trimEndFrame}
+      playbackRate={hook.speed}
       volume={volume}
       objectFit="cover"
       style={{ width: "100%", height: "100%", ...introStyle }}

@@ -84,6 +84,10 @@ const EMPTY_HOOK_STATE: HookState = {
   introAnimation: defaultMyCompProps.hook.introAnimation,
   outroAnimation: defaultMyCompProps.hook.outroAnimation,
   outroDurationInFrames: defaultMyCompProps.hook.outroDurationInFrames,
+  trimStartFrame: 0,
+  trimEndFrame: null,
+  sourceDurationInFrames: null,
+  speed: defaultMyCompProps.hook.speed,
 };
 
 const Home: NextPage = () => {
@@ -210,6 +214,7 @@ const Home: NextPage = () => {
           cropInsetLeft: clip.cropInsetLeft,
           cropInsetRight: clip.cropInsetRight,
           cropRotationDeg: clip.cropRotationDeg,
+          speed: clip.speed,
         })),
       header,
       rankingListStyle,
@@ -249,13 +254,21 @@ const Home: NextPage = () => {
       // Same "only counts once it's a real, done, known-duration upload"
       // rule as music above.
       hook:
-        hook.src && hook.uploadStatus === "done" && hook.durationInFrames
+        hook.src &&
+        hook.uploadStatus === "done" &&
+        hook.durationInFrames &&
+        hook.trimEndFrame !== null &&
+        hook.sourceDurationInFrames !== null
           ? {
               src: hook.src,
               durationInFrames: hook.durationInFrames,
               introAnimation: hook.introAnimation,
               outroAnimation: hook.outroAnimation,
               outroDurationInFrames: hook.outroDurationInFrames,
+              trimStartFrame: hook.trimStartFrame,
+              trimEndFrame: hook.trimEndFrame,
+              sourceDurationInFrames: hook.sourceDurationInFrames,
+              speed: hook.speed,
             }
           : defaultMyCompProps.hook,
     };

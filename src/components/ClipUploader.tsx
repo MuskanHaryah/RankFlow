@@ -193,6 +193,11 @@ export type UploadedClip = {
   cropInsetRight: number;
   // Phase 11 (extended) — rotation in degrees, -180 to 180. 0 = untouched.
   cropRotationDeg: number;
+  // Playback speed multiplier — 1 = normal, <1 = slow motion, >1 = fast
+  // forward. durationInFrames above is kept in sync as
+  // (trimEndFrame - trimStartFrame) / speed, same relationship trimming
+  // alone already keeps it in sync for.
+  speed: number;
 };
 
 export type PlayingOrderMode = "manual" | "ascending" | "descending" | "shuffle";
@@ -202,6 +207,12 @@ const MAX_CLIPS = 10;
 // Matches VIDEO_FPS in types/constants.ts. Duplicated here on purpose —
 // this component doesn't need to know about the Remotion composition at all.
 const FPS = 30;
+
+// Matches SPEED_MIN/SPEED_MAX/DEFAULT_SPEED in types/constants.ts. Same
+// duplication reasoning as FPS above.
+const SPEED_MIN = 0.1;
+const SPEED_MAX = 3;
+const DEFAULT_SPEED = 1;
 
 /**
  * Reads a video file's duration (seconds) and native pixel resolution
@@ -783,6 +794,7 @@ const SortableClipRow: React.FC<{
   onArmStickerPlacement: (id: string, emoji: string) => void;
   onRequestRemove: (id: string) => void;
   onTrimChange: (id: string, trimStartFrame: number, trimEndFrame: number) => void;
+  onSpeedChange: (id: string, speed: number) => void;
   onCropChange: (id: string, insets: CropInsets) => void;
   onRotationChange: (id: string, cropRotationDeg: number) => void;
 }> = ({
@@ -802,6 +814,7 @@ const SortableClipRow: React.FC<{
   onArmStickerPlacement,
   onRequestRemove,
   onTrimChange,
+  onSpeedChange,
   onCropChange,
   onRotationChange,
 }) => {
@@ -921,6 +934,23 @@ const SortableClipRow: React.FC<{
             Reading clip length for trimming…
           </p>
         )}
+        <div className="field-row">
+          <label className="field-row-label">Speed</label>
+          <div className="field-row-controls">
+            <input
+              type="range"
+              min={SPEED_MIN}
+              max={SPEED_MAX}
+              step={0.1}
+              value={clip.speed}
+              onChange={(e) => onSpeedChange(clip.id, Number(e.target.value))}
+              className="w-40"
+            />
+            <span className="w-14 font-mono-tabular text-sm text-subtitle">
+              {clip.speed.toFixed(1)}x
+            </span>
+          </div>
+        </div>
         {clip.sourceWidth !== null && clip.sourceHeight !== null ? (
           <VerticalityCheck width={clip.sourceWidth} height={clip.sourceHeight} />
         ) : null}
@@ -1174,6 +1204,7 @@ export const ClipUploader = forwardRef<
         cropInsetLeft: 0,
         cropInsetRight: 0,
         cropRotationDeg: 0,
+        speed: DEFAULT_SPEED,
       }));
 
       setClips(newClips);
@@ -1392,7 +1423,9 @@ export const ClipUploader = forwardRef<
           if (clip.id !== id) {
             return clip;
           }
-          const durationInFrames = trimEndFrame - trimStartFrame;
+          const durationInFrames = Math.round(
+            (trimEndFrame - trimStartFrame) / clip.speed,
+          );
           const stickers = clip.stickers.map((sticker) => ({
             ...sticker,
             startFrame: Math.min(
@@ -1413,6 +1446,35 @@ export const ClipUploader = forwardRef<
     },
     [],
   );
+
+  // Same duration relationship as handleTrimChange above, just triggered
+  // by the speed slider instead of a trim drag. trimEndFrame/trimStartFrame
+  // stay untouched — speed only changes how fast that trimmed span plays,
+  // which is exactly what shrinks/grows durationInFrames on the timeline.
+  const handleSpeedChange = useCallback((id: string, speed: number) => {
+    setClips((prevClips) =>
+      prevClips.map((clip) => {
+        if (clip.id !== id) {
+          return clip;
+        }
+        if (clip.trimEndFrame === null) {
+          return { ...clip, speed };
+        }
+        const durationInFrames = Math.round(
+          (clip.trimEndFrame - clip.trimStartFrame) / speed,
+        );
+        const stickers = clip.stickers.map((sticker) => ({
+          ...sticker,
+          startFrame: Math.min(
+            sticker.startFrame,
+            Math.max(0, durationInFrames - 1),
+          ),
+          endFrame: Math.min(sticker.endFrame, durationInFrames),
+        }));
+        return { ...clip, speed, durationInFrames, stickers };
+      }),
+    );
+  }, []);
 
   // Phase 11 (extended, redesigned) — independent 4-directional crop,
   // separate from trim and available regardless of the clip's orientation
@@ -1523,7 +1585,17 @@ export const ClipUploader = forwardRef<
         );
       },
       loadClips: (loadedClips: UploadedClip[]) => {
-        setClips(loadedClips);
+        // A project or autosaved draft saved before speed existed has
+        // clips with no `speed` key at all (undefined, not 1) — same
+        // class of bug as the hook's loadHookState fix, just per-clip
+        // here. Falls back to the normal default rather than crashing
+        // the speed slider's very first render.
+        setClips(
+          loadedClips.map((clip) => ({
+            ...clip,
+            speed: clip.speed ?? DEFAULT_SPEED,
+          })),
+        );
       },
     }),
     [handleApplyAnimationToAll],
@@ -1688,6 +1760,7 @@ export const ClipUploader = forwardRef<
                     onStickersChange={handleStickersChange}
                     onArmStickerPlacement={onArmStickerPlacement}
                     onTrimChange={handleTrimChange}
+                    onSpeedChange={handleSpeedChange}
                     onCropChange={handleCropChange}
                     onRotationChange={handleRotationChange}
                     onRequestRemove={(id) =>

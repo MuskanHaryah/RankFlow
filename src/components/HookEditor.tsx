@@ -8,9 +8,13 @@ import {
   useState,
 } from "react";
 import {
+  DEFAULT_SPEED,
   HOOK_OUTRO_MAX_DURATION_SECONDS,
   HOOK_OUTRO_MIN_DURATION_SECONDS,
+  SPEED_MAX,
+  SPEED_MIN,
 } from "../../types/constants";
+import { ClipTrimmer } from "./ClipTrimmer";
 import { InputContainer } from "./Container";
 
 // Matches VIDEO_FPS in types/constants.ts. Duplicated here on purpose —
@@ -35,6 +39,19 @@ export type HookState = {
   introAnimation: HookIntroAnimation;
   outroAnimation: HookOutroAnimation;
   outroDurationInFrames: number;
+  // Trim points, in frames into the original, untrimmed source file —
+  // same convention as ClipUploader's UploadedClip. trimEndFrame is null
+  // only until sourceDurationInFrames is known, same as clips.
+  trimStartFrame: number;
+  trimEndFrame: number | null;
+  // The hook's full, untrimmed length, read once the file's metadata
+  // loads. What the trim scrubber's track spans against.
+  sourceDurationInFrames: number | null;
+  // Playback speed multiplier — 1 = normal, <1 = slow motion, >1 = fast
+  // forward. durationInFrames above is kept in sync as
+  // (trimEndFrame - trimStartFrame) / speed, exactly like trimming keeps
+  // it in sync on its own.
+  speed: number;
 };
 
 const DEFAULT_HOOK_STATE: HookState = {
@@ -46,6 +63,10 @@ const DEFAULT_HOOK_STATE: HookState = {
   introAnimation: "fade",
   outroAnimation: "wipe",
   outroDurationInFrames: 15,
+  trimStartFrame: 0,
+  trimEndFrame: null,
+  sourceDurationInFrames: null,
+  speed: DEFAULT_SPEED,
 };
 
 const INTRO_OPTIONS: { value: HookIntroAnimation; label: string }[] = [
@@ -174,7 +195,13 @@ export const HookEditor = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
-      loadHookState: (state: HookState) => setHook(state),
+      // Merged against DEFAULT_HOOK_STATE rather than used as-is — a
+      // project or autosaved draft saved before speed/trim existed has a
+      // `hook` object missing those fields entirely (undefined, not 0),
+      // which would otherwise crash the very first render (e.g.
+      // hook.speed.toFixed(1) on an undefined speed).
+      loadHookState: (state: HookState) =>
+        setHook({ ...DEFAULT_HOOK_STATE, ...state }),
     }),
     [],
   );
@@ -192,6 +219,7 @@ export const HookEditor = forwardRef<
         introAnimation: prev.introAnimation,
         outroAnimation: prev.outroAnimation,
         outroDurationInFrames: prev.outroDurationInFrames,
+        speed: prev.speed,
         file,
         sourceFileName: file.name,
         src,
@@ -200,14 +228,23 @@ export const HookEditor = forwardRef<
 
       getVideoDurationInSeconds(file)
         .then((durationInSeconds) => {
-          setHook((prev) =>
-            prev.file === file
-              ? {
-                  ...prev,
-                  durationInFrames: Math.round(durationInSeconds * FPS),
-                }
-              : prev,
-          );
+          setHook((prev) => {
+            if (prev.file !== file) {
+              return prev;
+            }
+            const sourceDurationInFrames = Math.round(
+              durationInSeconds * FPS,
+            );
+            return {
+              ...prev,
+              sourceDurationInFrames,
+              trimStartFrame: 0,
+              trimEndFrame: sourceDurationInFrames,
+              durationInFrames: Math.round(
+                sourceDurationInFrames / prev.speed,
+              ),
+            };
+          });
         })
         .catch((err) => console.error(err));
 
@@ -231,6 +268,38 @@ export const HookEditor = forwardRef<
       e.currentTarget.value = "";
     }, []);
 
+  // Same relationship ClipUploader's handleTrimChange keeps between trim
+  // points and durationInFrames — just also dividing by speed here so a
+  // sped-up/slowed-down hook's Sequence length stays accurate too.
+  const handleTrimChange = useCallback(
+    (trimStartFrame: number, trimEndFrame: number) => {
+      setHook((prev) => ({
+        ...prev,
+        trimStartFrame,
+        trimEndFrame,
+        durationInFrames: Math.round(
+          (trimEndFrame - trimStartFrame) / prev.speed,
+        ),
+      }));
+    },
+    [],
+  );
+
+  const handleSpeedChange = useCallback((speed: number) => {
+    setHook((prev) => {
+      if (prev.trimEndFrame === null) {
+        return { ...prev, speed };
+      }
+      return {
+        ...prev,
+        speed,
+        durationInFrames: Math.round(
+          (prev.trimEndFrame - prev.trimStartFrame) / speed,
+        ),
+      };
+    });
+  }, []);
+
   const handleRemove = useCallback(() => {
     setHook((prev) => {
       if (prev.src?.startsWith("blob:")) {
@@ -241,6 +310,7 @@ export const HookEditor = forwardRef<
         introAnimation: prev.introAnimation,
         outroAnimation: prev.outroAnimation,
         outroDurationInFrames: prev.outroDurationInFrames,
+        speed: prev.speed,
       };
     });
   }, []);
@@ -317,6 +387,34 @@ export const HookEditor = forwardRef<
                 <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
               </svg>
             </button>
+          </div>
+
+          {hook.sourceDurationInFrames !== null &&
+          hook.trimEndFrame !== null ? (
+            <ClipTrimmer
+              sourceDurationInFrames={hook.sourceDurationInFrames}
+              trimStartFrame={hook.trimStartFrame}
+              trimEndFrame={hook.trimEndFrame}
+              onChange={handleTrimChange}
+            />
+          ) : null}
+
+          <div className="field-row">
+            <label className="field-row-label">Speed</label>
+            <div className="field-row-controls">
+              <input
+                type="range"
+                min={SPEED_MIN}
+                max={SPEED_MAX}
+                step={0.1}
+                value={hook.speed}
+                onChange={(e) => handleSpeedChange(Number(e.target.value))}
+                className="w-40"
+              />
+              <span className="w-14 font-mono-tabular text-sm text-subtitle">
+                {hook.speed.toFixed(1)}x
+              </span>
+            </div>
           </div>
 
           <div className="field-row">

@@ -142,7 +142,24 @@ export const ClipSchema = z.object({
   // getRotationCoverScale below) so the rotated content still fully
   // covers the frame — no blank corners to crop around.
   cropRotationDeg: z.number(),
+  // Playback speed multiplier for this clip's own footage — 1 = normal,
+  // <1 = slow motion, >1 = fast forward. Passed straight through to the
+  // <Video>'s playbackRate at render time. Deliberately independent of
+  // trimStartFrame/trimEndFrame (which stay in *source* frame numbers,
+  // unaffected by speed — see Remotion's own trimBefore/trimAfter
+  // semantics) — durationInFrames is what actually shrinks/grows on the
+  // timeline as speed changes, kept in sync by the editor exactly like it
+  // already is for trimming.
+  speed: z.number(),
 });
+
+// Shared bounds for the speed slider — both per-clip and the hook use the
+// same range. 0.1x is the slowest that still reads as "sped down" rather
+// than "the video is broken"; 3x is fast enough to feel like a genuine
+// speed-ramp effect without frames blurring into unwatchable mush.
+export const SPEED_MIN = 0.1;
+export const SPEED_MAX = 3;
+export const DEFAULT_SPEED = 1;
 
 // A one-time title for the whole video (distinct from the per-clip ranking
 // list in Phase 4). Stored as an array of {word, color} objects rather than
@@ -457,6 +474,19 @@ export const HookSchema = z.object({
   // an effect tacked onto only one side of the cut.
   outroAnimation: z.enum(["none", "fade", "wipe", "zoomFlash"]),
   outroDurationInFrames: z.number(),
+  // Trim points, in frames into the *original* source file — same
+  // convention as ClipSchema's trimStartFrame/trimEndFrame above.
+  // durationInFrames (below) is kept in sync by the editor as
+  // (trimEndFrame - trimStartFrame) / speed, same relationship as clips.
+  trimStartFrame: z.number(),
+  trimEndFrame: z.number(),
+  // The hook's full, untrimmed length, read once on upload — what the
+  // trim scrubber's track spans against. Purely informational for
+  // rendering (only trimStartFrame/trimEndFrame/durationInFrames actually
+  // drive playback), kept here for parity with ClipSchema.
+  sourceDurationInFrames: z.number(),
+  // Playback speed multiplier — same semantics as ClipSchema's speed.
+  speed: z.number(),
 });
 
 export const defaultHook: z.infer<typeof HookSchema> = {
@@ -465,6 +495,10 @@ export const defaultHook: z.infer<typeof HookSchema> = {
   introAnimation: "fade",
   outroAnimation: "wipe",
   outroDurationInFrames: 15, // 0.5s at 30fps
+  trimStartFrame: 0,
+  trimEndFrame: 0,
+  sourceDurationInFrames: 0,
+  speed: DEFAULT_SPEED,
 };
 
 // Bounds for the outro transition duration slider — long enough to read
