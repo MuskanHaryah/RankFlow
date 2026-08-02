@@ -635,7 +635,17 @@ const HookTrack: React.FC<{
 const HookOutroTransition: React.FC<{
   hook: Hook;
   hookDurationInFrames: number;
-}> = ({ hook, hookDurationInFrames }) => {
+  // Whoosh is deliberately rendered from a different spot in Main's tree
+  // than every other style (see the two call sites) — backdrop-filter
+  // blurs whatever's already painted behind it, and the ranking
+  // list/header are meant to stay crisp through a whoosh, not blur along
+  // with the footage. `renderMode` is how one component serves both call
+  // sites without duplicating all the window/timing math twice: each
+  // invocation early-returns null for whichever style doesn't belong at
+  // its position, so only one of the two ever actually renders JSX for
+  // any given frame.
+  renderMode: "confinedToVideoTrack" | "fullScreen";
+}> = ({ hook, hookDurationInFrames, renderMode }) => {
   const frame = useCurrentFrame();
   const { width } = useVideoConfig();
 
@@ -644,6 +654,14 @@ const HookOutroTransition: React.FC<{
     hookDurationInFrames <= 0 ||
     hook.outroAnimation === "none"
   ) {
+    return null;
+  }
+
+  const isWhoosh = hook.outroAnimation === "whoosh";
+  if (renderMode === "confinedToVideoTrack" && !isWhoosh) {
+    return null;
+  }
+  if (renderMode === "fullScreen" && isWhoosh) {
     return null;
   }
 
@@ -755,7 +773,11 @@ const HookOutroTransition: React.FC<{
 const GlobalTransition: React.FC<{
   transition: GlobalTransitionConfig;
   boundaryFrame: number;
-}> = ({ transition, boundaryFrame }) => {
+  // See HookOutroTransition's own comment on this same prop — identical
+  // reasoning, applied to the clip-to-clip transitions instead of the
+  // hook's outro.
+  renderMode: "confinedToVideoTrack" | "fullScreen";
+}> = ({ transition, boundaryFrame, renderMode }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
 
@@ -763,18 +785,32 @@ const GlobalTransition: React.FC<{
     return null;
   }
 
+  const isWhoosh = transition.style === "whoosh";
+  if (renderMode === "confinedToVideoTrack" && !isWhoosh) {
+    return null;
+  }
+  if (renderMode === "fullScreen" && isWhoosh) {
+    return null;
+  }
+
   const halfDuration = transition.durationInFrames / 2;
   const windowStart = boundaryFrame - halfDuration;
   const windowEnd = boundaryFrame + halfDuration;
 
-  const sound = transition.soundSrc ? (
-    <Sequence
-      from={Math.round(windowStart)}
-      durationInFrames={transition.durationInFrames}
-    >
-      <Audio src={transition.soundSrc} />
-    </Sequence>
-  ) : null;
+  // The optional boundary sound plays regardless of renderMode — it isn't
+  // a visual, so it has nothing to do with which layer it's confined to.
+  // Attached to the fullScreen invocation only, so it fires exactly once
+  // per boundary rather than twice (both call sites render for every
+  // boundary; only one is the "real" one for any given style).
+  const sound =
+    transition.soundSrc && renderMode === "fullScreen" ? (
+      <Sequence
+        from={Math.round(windowStart)}
+        durationInFrames={transition.durationInFrames}
+      >
+        <Audio src={transition.soundSrc} />
+      </Sequence>
+    ) : null;
 
   if (frame < windowStart || frame > windowEnd) {
     return sound;
@@ -1448,6 +1484,25 @@ export const Main = ({
               })}
             </Sequence>
           ))}
+          {/* Confined to the video track specifically — see
+              HookOutroTransition/GlobalTransition's own renderMode
+              comments. Only the "whoosh" style ever actually renders
+              here; every other transition style renders from the
+              full-screen call sites near the bottom of this component,
+              unchanged from before this split existed. */}
+          <HookOutroTransition
+            hook={hook}
+            hookDurationInFrames={hookDurationInFrames}
+            renderMode="confinedToVideoTrack"
+          />
+          {clipRanges.slice(0, -1).map((clip) => (
+            <GlobalTransition
+              key={clip.id}
+              transition={transition}
+              boundaryFrame={clip.to}
+              renderMode="confinedToVideoTrack"
+            />
+          ))}
         </AbsoluteFill>
         <HeaderShadeBackdrop header={header} canvasWidth={width} />
         <AbsoluteFill style={{ top: videoTrackOffset }}>
@@ -1466,6 +1521,7 @@ export const Main = ({
       <HookOutroTransition
         hook={hook}
         hookDurationInFrames={hookDurationInFrames}
+        renderMode="fullScreen"
       />
       {/* One per internal boundary only — clipRanges.slice(0, -1) drops
           the last clip, so nothing ever plays after the final clip ends,
@@ -1475,6 +1531,7 @@ export const Main = ({
           key={clip.id}
           transition={transition}
           boundaryFrame={clip.to}
+          renderMode="fullScreen"
         />
       ))}
     </AbsoluteFill>
