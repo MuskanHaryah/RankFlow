@@ -150,66 +150,60 @@ const processQueue = async (): Promise<void> => {
 };
 
 /**
+ * Recursively rewrites every string that looks like an uploaded file path
+ * (starts with "/uploads/") into an absolute URL — anywhere in the given
+ * value's object/array tree, regardless of field name or nesting depth.
+ *
+ * This replaces a hand-maintained list of fields (clips[].src, music.src,
+ * voiceOvers[].src, hook.src, transition.soundSrc, ...) that had to be
+ * updated every single time a new feature introduced another uploaded-file
+ * field — and reliably forgot to, three times in a row (music, then hook,
+ * then transition), each producing the exact same "404 during background
+ * render" symptom. A tree-walk that keys off the *value's shape* (does
+ * this string start with "/uploads/"?) rather than the *field's name*
+ * can't forget a field, because it never enumerates field names at all —
+ * any future feature that stores an uploaded file's path this same way is
+ * covered automatically, with zero changes needed here.
+ *
+ * "/uploads/" is a namespace this app only ever uses for real uploaded
+ * media paths (see the upload route), so this is safe: nothing else in
+ * the schema — header text, hex colors, labels, enum values — could ever
+ * coincidentally start with exactly that prefix.
+ */
+const absolutizeUploadedUrls = <T>(value: T, host: string): T => {
+  if (typeof value === "string") {
+    return (value.startsWith("/uploads/")
+      ? `http://${host}${value}`
+      : value) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => absolutizeUploadedUrls(item, host)) as T;
+  }
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      result[key] = absolutizeUploadedUrls(val, host);
+    }
+    return result as T;
+  }
+  return value;
+};
+
+/**
  * The actual render, moved here unchanged from the old synchronous
- * /api/render-local route — same absolute-URL rewriting for already-
- * uploaded clips/music/voice-overs, same temp props file, same random
- * port per render, same `remotion render` CLI invocation. Only the
- * calling convention changed: this used to run inline inside the POST
- * handler (blocking the whole HTTP request until it finished); now it
- * runs inside processQueue's background loop instead.
+ * /api/render-local route — same temp props file, same random port per
+ * render, same `remotion render` CLI invocation. Only the calling
+ * convention changed: this used to run inline inside the POST handler
+ * (blocking the whole HTTP request until it finished); now it runs inside
+ * processQueue's background loop instead.
  */
 const runRender = async (
   inputProps: unknown,
   host: string,
 ): Promise<string> => {
-  const props = inputProps as {
-    clips: { src: string }[];
-    music?: { src: string | null } | null;
-    voiceOvers?: { src: string }[];
-    hook?: { src: string | null } | null;
-  };
-
-  // Guarded against an already-absolute src (defensive — shouldn't happen
-  // today since the client always sends relative /uploads/... paths, but
-  // double-prefixing would silently break rendering in a much more
-  // confusing way than this one-line guard costs).
-  const toAbsolute = (src: string) =>
-    src.startsWith("http") ? src : `http://${host}${src}`;
-
-  const clipsWithAbsoluteUrls = props.clips.map((clip) => ({
-    ...clip,
-    src: toAbsolute(clip.src),
-  }));
-
-  const musicWithAbsoluteUrl =
-    props.music && typeof props.music.src === "string"
-      ? { ...props.music, src: toAbsolute(props.music.src) }
-      : props.music;
-
-  const voiceOversWithAbsoluteUrls = Array.isArray(props.voiceOvers)
-    ? props.voiceOvers.map((voiceOver) => ({
-        ...voiceOver,
-        src: toAbsolute(voiceOver.src),
-      }))
-    : props.voiceOvers;
-
-  // Phase 17 — the hook video has its own `src`, entirely separate from
-  // the `clips` array (see HookSchema in types/constants.ts), so it needs
-  // the exact same absolute-URL treatment as clips/music/voice-overs got
-  // above. This was the one field missed when the hook feature was added
-  // — every other clip already rendered fine, only the hook 404'd.
-  const hookWithAbsoluteUrl =
-    props.hook && typeof props.hook.src === "string"
-      ? { ...props.hook, src: toAbsolute(props.hook.src) }
-      : props.hook;
-
-  const propsToWrite = {
-    ...props,
-    clips: clipsWithAbsoluteUrls,
-    music: musicWithAbsoluteUrl,
-    voiceOvers: voiceOversWithAbsoluteUrls,
-    hook: hookWithAbsoluteUrl,
-  };
+  const propsToWrite = absolutizeUploadedUrls(inputProps, host);
 
   const propsPath = path.join(
     os.tmpdir(),
