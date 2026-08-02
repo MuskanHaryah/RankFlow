@@ -775,7 +775,12 @@ const GlobalTransition: React.FC<{
   boundaryFrame: number;
   // See HookOutroTransition's own comment on this same prop — identical
   // reasoning, applied to the clip-to-clip transitions instead of the
-  // hook's outro.
+  // hook's outro. NOTE: this only gates where the *visual overlay* draws
+  // from (whoosh confined to the video track, everything else
+  // full-screen) — the optional boundary sound below is deliberately NOT
+  // gated by style, since sound isn't a layer-order concern the way the
+  // backdrop-filter blur is. Sound always comes from the fullScreen call
+  // site regardless of which style is active.
   renderMode: "confinedToVideoTrack" | "fullScreen";
 }> = ({ transition, boundaryFrame, renderMode }) => {
   const frame = useCurrentFrame();
@@ -786,22 +791,18 @@ const GlobalTransition: React.FC<{
   }
 
   const isWhoosh = transition.style === "whoosh";
-  if (renderMode === "confinedToVideoTrack" && !isWhoosh) {
-    return null;
-  }
-  if (renderMode === "fullScreen" && isWhoosh) {
-    return null;
-  }
-
   const halfDuration = transition.durationInFrames / 2;
   const windowStart = boundaryFrame - halfDuration;
   const windowEnd = boundaryFrame + halfDuration;
 
-  // The optional boundary sound plays regardless of renderMode — it isn't
-  // a visual, so it has nothing to do with which layer it's confined to.
-  // Attached to the fullScreen invocation only, so it fires exactly once
-  // per boundary rather than twice (both call sites render for every
-  // boundary; only one is the "real" one for any given style).
+  // The optional boundary sound plays regardless of style — attached to
+  // the fullScreen invocation only, so it fires exactly once per boundary
+  // rather than twice (both call sites render for every boundary). This
+  // is deliberately NOT gated by isWhoosh: whoosh's *visual overlay*
+  // renders from the confinedToVideoTrack call site instead of this one,
+  // but its sound still needs to come from here, same as every other
+  // style — sound has nothing to do with which paint layer the blur
+  // needs to sit under.
   const sound =
     transition.soundSrc && renderMode === "fullScreen" ? (
       <Sequence
@@ -811,6 +812,19 @@ const GlobalTransition: React.FC<{
         <Audio src={transition.soundSrc} />
       </Sequence>
     ) : null;
+
+  // The overlay itself still only ever renders from one of the two call
+  // sites per style — whoosh confined to the video track, everything
+  // else full-screen — exactly as before. Checked separately from the
+  // sound above so a style mismatch returns the sound (if any) instead of
+  // silently dropping it.
+  const rendersOverlayHere =
+    (renderMode === "confinedToVideoTrack" && isWhoosh) ||
+    (renderMode === "fullScreen" && !isWhoosh);
+
+  if (!rendersOverlayHere) {
+    return sound;
+  }
 
   if (frame < windowStart || frame > windowEnd) {
     return sound;
