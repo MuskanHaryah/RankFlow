@@ -513,6 +513,48 @@ export const HOOK_OUTRO_MAX_DURATION_SECONDS = 1.5;
 // sensible speed covers that for every intro style.
 export const HOOK_INTRO_DURATION_IN_FRAMES = 15;
 
+// The global transition — plays at every internal boundary between two
+// ranked clips (never after the last clip, and never in place of the
+// hook's own outroAnimation into clip 1 — that stays a separate, older
+// setting so existing projects render identically until someone opts
+// into this new one). Deliberately modeled as a pure full-screen overlay
+// around the existing hard cut (see HookOutroTransition's precedent in
+// Main.tsx) rather than a true crossfade — it never touches
+// computeClipRanges or any clip's own durationInFrames, so turning it on
+// or off can't shift any existing timing.
+export const TRANSITION_STYLE_OPTIONS = [
+  "none",
+  "fade",
+  "flash",
+  "wipe",
+  "wipeVertical",
+  "diagonalWipe",
+  "whoosh",
+  "glitch",
+  "irisRound",
+  "shutterSplit",
+] as const;
+
+export const TransitionSchema = z.object({
+  style: z.enum(TRANSITION_STYLE_OPTIONS),
+  // Total window (in frames) the overlay effect occupies, centered on
+  // the cut — same "half before, half after" convention as the hook's
+  // own outroDurationInFrames.
+  durationInFrames: z.number(),
+  // Optional whoosh/voice line that plays once per transition, timed to
+  // start exactly when that transition's window begins. null = silent.
+  soundSrc: z.string().nullable(),
+});
+
+export const TRANSITION_MIN_DURATION_SECONDS = 0.2;
+export const TRANSITION_MAX_DURATION_SECONDS = 1.5;
+
+export const defaultTransition: z.infer<typeof TransitionSchema> = {
+  style: "none",
+  durationInFrames: 15,
+  soundSrc: null,
+};
+
 export const CompositionProps = z.object({
   clips: z.array(ClipSchema),
   header: HeaderSchema,
@@ -522,6 +564,7 @@ export const CompositionProps = z.object({
   originalAudioVolume: z.number(),
   globalCrop: GlobalCropSchema,
   hook: HookSchema,
+  transition: TransitionSchema,
 });
 
 export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
@@ -544,6 +587,7 @@ export const defaultMyCompProps: z.infer<typeof CompositionProps> = {
   originalAudioVolume: DEFAULT_ORIGINAL_AUDIO_VOLUME,
   globalCrop: { top: 0, bottom: 0, left: 0, right: 0 },
   hook: defaultHook,
+  transition: defaultTransition,
 };
 
 // How many seconds the header stays on screen when durationMode is

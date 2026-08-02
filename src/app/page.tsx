@@ -35,6 +35,11 @@ import {
   GlobalCropEditorHandle,
 } from "../components/GlobalCropEditor";
 import { HookEditor, HookEditorHandle, HookState } from "../components/HookEditor";
+import {
+  TransitionEditor,
+  TransitionEditorHandle,
+  TransitionState,
+} from "../components/TransitionEditor";
 import { PresetManager, PresetStyle } from "../components/PresetManager";
 import { ProjectManager } from "../components/ProjectManager";
 import {
@@ -90,6 +95,17 @@ const EMPTY_HOOK_STATE: HookState = {
   speed: defaultMyCompProps.hook.speed,
 };
 
+// Same reasoning as EMPTY_HOOK_STATE above: matches TransitionEditor.tsx's
+// own DEFAULT_TRANSITION_STATE.
+const EMPTY_TRANSITION_STATE: TransitionState = {
+  style: defaultMyCompProps.transition.style,
+  durationInFrames: defaultMyCompProps.transition.durationInFrames,
+  soundFile: null,
+  soundSourceFileName: "",
+  soundSrc: null,
+  soundUploadStatus: null,
+};
+
 const Home: NextPage = () => {
   const [uploadedClips, setUploadedClips] = useState<UploadedClip[]>([]);
   // Lifted the same way as uploadedClips: HeaderEditor owns the actual
@@ -123,6 +139,11 @@ const Home: NextPage = () => {
   // hook-editing state (including in-progress upload), this just holds
   // the latest reported value.
   const [hook, setHook] = useState<HookState>(EMPTY_HOOK_STATE);
+  // Same lifted pattern again: TransitionEditor owns the actual editing
+  // state and just reports the current value up on every change.
+  const [transition, setTransition] = useState<TransitionState>(
+    EMPTY_TRANSITION_STATE,
+  );
 
   // Phase 10 — which clip (if any) is currently "armed" for click-to-place
   // sticker placement, and which emoji it'll place. Owned here (not inside
@@ -150,6 +171,7 @@ const Home: NextPage = () => {
   const globalCropEditorRef = useRef<GlobalCropEditorHandle>(null);
   const audioEditorRef = useRef<AudioEditorHandle>(null);
   const hookEditorRef = useRef<HookEditorHandle>(null);
+  const transitionEditorRef = useRef<TransitionEditorHandle>(null);
 
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
 
@@ -271,6 +293,18 @@ const Home: NextPage = () => {
               speed: hook.speed,
             }
           : defaultMyCompProps.hook,
+      // Sound is optional — the transition itself (style + duration)
+      // works with or without one, so unlike hook/music above this
+      // isn't gated on an upload finishing. Only soundSrc itself waits
+      // for "done" (a still-uploading blob URL would work fine in the
+      // local Player preview, but isn't a valid src for the actual
+      // server-side render).
+      transition: {
+        style: transition.style,
+        durationInFrames: transition.durationInFrames,
+        soundSrc:
+          transition.soundUploadStatus === "done" ? transition.soundSrc : null,
+      },
     };
   }, [
     uploadedClips,
@@ -281,6 +315,7 @@ const Home: NextPage = () => {
     voiceOvers,
     originalAudioVolume,
     hook,
+    transition,
   ]);
 
   const totalDurationInFrames = useMemo(() => {
@@ -365,6 +400,7 @@ const Home: NextPage = () => {
       voiceOvers,
       originalAudioVolume,
       hook,
+      transition,
     };
   }, [
     uploadedClips,
@@ -375,6 +411,7 @@ const Home: NextPage = () => {
     voiceOvers,
     originalAudioVolume,
     hook,
+    transition,
   ]);
 
   // Phase 14 — restores every piece of a saved project via each editor's
@@ -394,6 +431,7 @@ const Home: NextPage = () => {
       originalAudioVolume: state.originalAudioVolume,
     });
     hookEditorRef.current?.loadHookState(state.hook);
+    transitionEditorRef.current?.loadTransitionState(state.transition);
     setStickerPlacementArmedFor(null);
   }, []);
 
@@ -416,6 +454,7 @@ const Home: NextPage = () => {
       originalAudioVolume: defaultMyCompProps.originalAudioVolume,
     });
     hookEditorRef.current?.loadHookState(EMPTY_HOOK_STATE);
+    transitionEditorRef.current?.loadTransitionState(EMPTY_TRANSITION_STATE);
     setStickerPlacementArmedFor(null);
     // The autosaved draft (see below) mirrors whatever's on screen — once
     // the screen is back to empty/default, the draft needs to actually be
@@ -683,6 +722,10 @@ const Home: NextPage = () => {
               defaultOpen={false}
             >
               <HookEditor ref={hookEditorRef} onHookChange={setHook} />
+              <TransitionEditor
+                ref={transitionEditorRef}
+                onTransitionChange={setTransition}
+              />
             </Section>
             <Section label="Clips" description="Upload, order, and rank your footage">
               <ClipUploader

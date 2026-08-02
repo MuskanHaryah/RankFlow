@@ -29,6 +29,7 @@ export type Sticker = Clip["stickers"][number];
 export type Music = z.infer<typeof CompositionProps>["music"];
 export type VoiceOver = z.infer<typeof CompositionProps>["voiceOvers"][number];
 export type Hook = z.infer<typeof CompositionProps>["hook"];
+export type GlobalTransitionConfig = z.infer<typeof CompositionProps>["transition"];
 type HeaderProps = z.infer<typeof CompositionProps>["header"];
 type RankingListStyleProps = z.infer<typeof CompositionProps>["rankingListStyle"];
 
@@ -704,6 +705,254 @@ const HookOutroTransition: React.FC<{
 };
 
 /**
+ * The global transition — plays as a full-screen overlay centered on the
+ * hard cut between two ranked clips. Same core pattern as
+ * HookOutroTransition above (a symmetric window around a fixed cut frame,
+ * ramping up to full intensity right at the cut and back down after), just
+ * generalized across many more styles and given an optional sound.
+ *
+ * Deliberately NOT wrapped in a <Sequence> for the visual overlay itself —
+ * `frame` is read directly via useCurrentFrame() at Main's own top level,
+ * exactly like HookOutroTransition, so `boundaryFrame` (a clipRanges[i].to
+ * value) needs no offset math. The optional sound *is* wrapped in its own
+ * tiny <Sequence>, since audio genuinely needs its local frame 0 to line
+ * up with "this transition just started," not the composition's frame 0.
+ *
+ * Rendered once per internal clip boundary — never after the last clip
+ * (the caller simply never creates one for it) and never for the
+ * hook-into-clip-1 boundary (that stays HookOutroTransition's own,
+ * separate setting, so existing hook projects render identically whether
+ * or not this feature is ever touched).
+ */
+const GlobalTransition: React.FC<{
+  transition: GlobalTransitionConfig;
+  boundaryFrame: number;
+}> = ({ transition, boundaryFrame }) => {
+  const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
+
+  if (transition.style === "none" || transition.durationInFrames <= 0) {
+    return null;
+  }
+
+  const halfDuration = transition.durationInFrames / 2;
+  const windowStart = boundaryFrame - halfDuration;
+  const windowEnd = boundaryFrame + halfDuration;
+
+  const sound = transition.soundSrc ? (
+    <Sequence
+      from={Math.round(windowStart)}
+      durationInFrames={transition.durationInFrames}
+    >
+      <Audio src={transition.soundSrc} />
+    </Sequence>
+  ) : null;
+
+  if (frame < windowStart || frame > windowEnd) {
+    return sound;
+  }
+
+  // Ramps 0 -> 1 approaching the cut, then 1 -> 0 leaving it — "how
+  // intense right now," shared by every style below.
+  const rampToCutAndBack = (): number =>
+    frame < boundaryFrame
+      ? interpolate(frame, [windowStart, boundaryFrame], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })
+      : interpolate(frame, [boundaryFrame, windowEnd], [1, 0], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        });
+
+  // A plain 0 -> 1 sweep across the whole window, for styles (wipes,
+  // whoosh) that travel in one direction rather than ramp up-and-back.
+  const linearProgress = interpolate(frame, [windowStart, windowEnd], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  const intensity = rampToCutAndBack();
+
+  let overlay: React.ReactNode = null;
+
+  if (transition.style === "fade") {
+    overlay = (
+      <AbsoluteFill style={{ backgroundColor: "black", opacity: intensity }} />
+    );
+  } else if (transition.style === "flash") {
+    overlay = (
+      <AbsoluteFill style={{ backgroundColor: "white", opacity: intensity }} />
+    );
+  } else if (transition.style === "wipe") {
+    const translateXPercent = interpolate(linearProgress, [0, 1], [-100, 100]);
+    overlay = (
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+        <AbsoluteFill
+          style={{
+            backgroundColor: "black",
+            transform: `translateX(${translateXPercent}%)`,
+          }}
+        />
+      </AbsoluteFill>
+    );
+  } else if (transition.style === "wipeVertical") {
+    const translateYPercent = interpolate(linearProgress, [0, 1], [-100, 100]);
+    overlay = (
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+        <AbsoluteFill
+          style={{
+            backgroundColor: "black",
+            transform: `translateY(${translateYPercent}%)`,
+          }}
+        />
+      </AbsoluteFill>
+    );
+  } else if (transition.style === "diagonalWipe") {
+    const translateXPercent = interpolate(linearProgress, [0, 1], [-150, 150]);
+    overlay = (
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+        <div
+          style={{
+            position: "absolute",
+            top: "-60%",
+            left: "-60%",
+            width: "220%",
+            height: "220%",
+            backgroundColor: "black",
+            transform: `translateX(${translateXPercent}%) rotate(18deg)`,
+          }}
+        />
+      </AbsoluteFill>
+    );
+  } else if (transition.style === "whoosh") {
+    // A bright, heavily-blurred horizontal streak sweeping across the cut,
+    // plus a couple of thinner accent streaks slightly offset — reads as
+    // fast horizontal motion blur, the "camera whip-pans" look.
+    const sweepXPercent = interpolate(linearProgress, [0, 1], [-40, 140]);
+    overlay = (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: intensity }}>
+        <AbsoluteFill
+          style={{
+            background:
+              "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 42%, rgba(255,255,255,0.95) 50%, rgba(255,255,255,0.55) 58%, transparent 100%)",
+            filter: `blur(${10 + intensity * 18}px)`,
+            transform: `translateX(${sweepXPercent}%) skewX(-14deg) scaleX(2.2)`,
+          }}
+        />
+        {[0.22, 0.5, 0.78].map((topFraction, i) => (
+          <div
+            key={i}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: `${topFraction * 100}%`,
+              height: "5%",
+              backgroundColor: "rgba(255,255,255,0.85)",
+              filter: "blur(5px)",
+              transform: `translateX(${sweepXPercent + (i - 1) * 10}%) scaleX(3) skewX(-20deg)`,
+            }}
+          />
+        ))}
+      </AbsoluteFill>
+    );
+  } else if (transition.style === "glitch") {
+    // RGB-split + scanlines + jitter — a couple of frame-driven sine waves
+    // stand in for "random" jitter without needing a real RNG (which
+    // wouldn't be deterministic across server-side renders anyway).
+    // Note: Math.sin/cos here are pure functions of `frame` alone (no
+    // Date.now()/Math.random), so the same frame always renders
+    // identically — the eslint-plugin-remotion flicker rule flags any
+    // Math.sin/cos call regardless, so a warning here is expected and safe.
+    const jitterX = Math.sin(frame * 3.7) * 16 * intensity;
+    const jitterX2 = Math.cos(frame * 5.3) * 12 * intensity;
+    overlay = (
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+        <AbsoluteFill
+          style={{
+            backgroundColor: "red",
+            mixBlendMode: "screen",
+            opacity: intensity * 0.35,
+            transform: `translateX(${jitterX}px)`,
+          }}
+        />
+        <AbsoluteFill
+          style={{
+            backgroundColor: "cyan",
+            mixBlendMode: "screen",
+            opacity: intensity * 0.35,
+            transform: `translateX(${-jitterX2}px)`,
+          }}
+        />
+        <AbsoluteFill
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(0deg, rgba(0,0,0,0.55) 0px, rgba(0,0,0,0.55) 2px, transparent 2px, transparent 4px)",
+            opacity: intensity * 0.5,
+          }}
+        />
+        <AbsoluteFill
+          style={{ backgroundColor: "black", opacity: intensity * 0.18 }}
+        />
+      </AbsoluteFill>
+    );
+  } else if (transition.style === "irisRound") {
+    // A black overlay with a circular "hole" that shrinks to nothing right
+    // at the cut (fully covering the frame) then grows back open after —
+    // a classic iris wipe.
+    const diagonal = Math.sqrt(width * width + height * height) / 2;
+    const holeRadiusPx = (1 - intensity) * diagonal;
+    overlay = (
+      <AbsoluteFill
+        style={{
+          background: `radial-gradient(circle at 50% 50%, transparent ${holeRadiusPx}px, black ${holeRadiusPx}px)`,
+        }}
+      />
+    );
+  } else if (transition.style === "shutterSplit") {
+    // Two black panels slide in from the top and bottom edges to meet and
+    // fully cover the frame right at the cut, then continue on through to
+    // reveal what's now playing — like a camera shutter closing and
+    // reopening.
+    const travelPercent = interpolate(intensity, [0, 1], [-100, 0]);
+    overlay = (
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "50%",
+            backgroundColor: "black",
+            transform: `translateY(${travelPercent}%)`,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: "50%",
+            backgroundColor: "black",
+            transform: `translateY(${-travelPercent}%)`,
+          }}
+        />
+      </AbsoluteFill>
+    );
+  }
+
+  return (
+    <>
+      {overlay}
+      {sound}
+    </>
+  );
+};
+
+/**
  * Computed once, shared by both the video Sequence stack below and the
  * ranking list overlay — if these were computed twice with even slightly
  * different logic, the overlay's reveal timing could silently drift out
@@ -1073,6 +1322,7 @@ export const Main = ({
   originalAudioVolume,
   globalCrop,
   hook,
+  transition,
 }: z.infer<typeof CompositionProps>) => {
   // Phase 17 — 0 when there's no hook (or its duration hasn't been read
   // yet), otherwise exactly how many frames the hook occupies at the very
@@ -1186,6 +1436,16 @@ export const Main = ({
         hook={hook}
         hookDurationInFrames={hookDurationInFrames}
       />
+      {/* One per internal boundary only — clipRanges.slice(0, -1) drops
+          the last clip, so nothing ever plays after the final clip ends,
+          per the explicit requirement this feature was built to. */}
+      {clipRanges.slice(0, -1).map((clip) => (
+        <GlobalTransition
+          key={clip.id}
+          transition={transition}
+          boundaryFrame={clip.to}
+        />
+      ))}
     </AbsoluteFill>
   );
 };
