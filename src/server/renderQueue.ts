@@ -166,9 +166,15 @@ const runRender = async (
     clips: { src: string }[];
     music?: { src: string | null } | null;
     voiceOvers?: { src: string }[];
+    hook?: { src: string | null } | null;
   };
 
-  const toAbsolute = (src: string) => `http://${host}${src}`;
+  // Guarded against an already-absolute src (defensive — shouldn't happen
+  // today since the client always sends relative /uploads/... paths, but
+  // double-prefixing would silently break rendering in a much more
+  // confusing way than this one-line guard costs).
+  const toAbsolute = (src: string) =>
+    src.startsWith("http") ? src : `http://${host}${src}`;
 
   const clipsWithAbsoluteUrls = props.clips.map((clip) => ({
     ...clip,
@@ -187,11 +193,22 @@ const runRender = async (
       }))
     : props.voiceOvers;
 
+  // Phase 17 — the hook video has its own `src`, entirely separate from
+  // the `clips` array (see HookSchema in types/constants.ts), so it needs
+  // the exact same absolute-URL treatment as clips/music/voice-overs got
+  // above. This was the one field missed when the hook feature was added
+  // — every other clip already rendered fine, only the hook 404'd.
+  const hookWithAbsoluteUrl =
+    props.hook && typeof props.hook.src === "string"
+      ? { ...props.hook, src: toAbsolute(props.hook.src) }
+      : props.hook;
+
   const propsToWrite = {
     ...props,
     clips: clipsWithAbsoluteUrls,
     music: musicWithAbsoluteUrl,
     voiceOvers: voiceOversWithAbsoluteUrls,
+    hook: hookWithAbsoluteUrl,
   };
 
   const propsPath = path.join(

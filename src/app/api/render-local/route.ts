@@ -46,12 +46,22 @@ export async function POST(req: NextRequest) {
         typeof voiceOver.src !== "string" ||
         voiceOver.src.startsWith("blob:"),
     );
+  const hasUnuploadedHook =
+    inputProps.hook &&
+    inputProps.hook.src !== null &&
+    (typeof inputProps.hook.src !== "string" ||
+      inputProps.hook.src.startsWith("blob:"));
 
-  if (hasUnuploadedClip || hasUnuploadedMusic || hasUnuploadedVoiceOver) {
+  if (
+    hasUnuploadedClip ||
+    hasUnuploadedMusic ||
+    hasUnuploadedVoiceOver ||
+    hasUnuploadedHook
+  ) {
     return NextResponse.json(
       {
         error:
-          "One or more clips, the music track, or a voice-over haven't finished uploading to the server yet. Wait for everything to show 'uploaded' before rendering.",
+          "One or more clips, the music track, the hook video, or a voice-over haven't finished uploading to the server yet. Wait for everything to show 'uploaded' before rendering.",
       },
       { status: 400 },
     );
@@ -68,7 +78,8 @@ export async function POST(req: NextRequest) {
   // are uploaded the exact same way and hit the exact same bundle-copy
   // unreliability if left as relative paths.
   const host = req.headers.get("host") || "localhost:3000";
-  const toAbsolute = (src: string) => `http://${host}${src}`;
+  const toAbsolute = (src: string) =>
+    src.startsWith("http") ? src : `http://${host}${src}`;
 
   const clipsWithAbsoluteUrls = inputProps.clips.map(
     (clip: { src: string }) => ({
@@ -89,11 +100,17 @@ export async function POST(req: NextRequest) {
       }))
     : inputProps.voiceOvers;
 
+  const hookWithAbsoluteUrl =
+    inputProps.hook && typeof inputProps.hook.src === "string"
+      ? { ...inputProps.hook, src: toAbsolute(inputProps.hook.src) }
+      : inputProps.hook;
+
   const propsToWrite = {
     ...inputProps,
     clips: clipsWithAbsoluteUrls,
     music: musicWithAbsoluteUrl,
     voiceOvers: voiceOversWithAbsoluteUrls,
+    hook: hookWithAbsoluteUrl,
   };
 
   const propsPath = path.join(os.tmpdir(), `rankflow-props-${Date.now()}.json`);

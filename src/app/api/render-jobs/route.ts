@@ -33,8 +33,9 @@ export async function POST(req: NextRequest) {
 
   // A local render process runs in Node, completely outside the browser —
   // it can never read a blob: URL, since those only exist in browser
-  // memory. Every clip, plus any music/voice-over track, must already be
-  // a real uploaded server path before this job can ever succeed.
+  // memory. Every clip, plus any music/voice-over/hook track, must
+  // already be a real uploaded server path before this job can ever
+  // succeed.
   const hasUnuploadedClip = inputProps.clips.some(
     (clip: { src?: string }) =>
       typeof clip.src !== "string" || clip.src.startsWith("blob:"),
@@ -51,12 +52,22 @@ export async function POST(req: NextRequest) {
         typeof voiceOver.src !== "string" ||
         voiceOver.src.startsWith("blob:"),
     );
+  const hasUnuploadedHook =
+    inputProps.hook &&
+    inputProps.hook.src !== null &&
+    (typeof inputProps.hook.src !== "string" ||
+      inputProps.hook.src.startsWith("blob:"));
 
-  if (hasUnuploadedClip || hasUnuploadedMusic || hasUnuploadedVoiceOver) {
+  if (
+    hasUnuploadedClip ||
+    hasUnuploadedMusic ||
+    hasUnuploadedVoiceOver ||
+    hasUnuploadedHook
+  ) {
     return NextResponse.json(
       {
         error:
-          "One or more clips, the music track, or a voice-over haven't finished uploading to the server yet. Wait for everything to show 'uploaded' before rendering.",
+          "One or more clips, the music track, the hook video, or a voice-over haven't finished uploading to the server yet. Wait for everything to show 'uploaded' before rendering.",
       },
       { status: 400 },
     );
