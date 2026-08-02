@@ -472,7 +472,7 @@ export const HookSchema = z.object({
   // (half plays over the hook's own tail, half over the first ranked
   // clip's opening), so it reads as a join between the two rather than
   // an effect tacked onto only one side of the cut.
-  outroAnimation: z.enum(["none", "fade", "wipe", "zoomFlash"]),
+  outroAnimation: z.enum(["none", "fade", "wipe", "zoomFlash", "whoosh"]),
   outroDurationInFrames: z.number(),
   // Trim points, in frames into the *original* source file — same
   // convention as ClipSchema's trimStartFrame/trimEndFrame above.

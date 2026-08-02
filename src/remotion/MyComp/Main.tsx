@@ -637,6 +637,7 @@ const HookOutroTransition: React.FC<{
   hookDurationInFrames: number;
 }> = ({ hook, hookDurationInFrames }) => {
   const frame = useCurrentFrame();
+  const { width } = useVideoConfig();
 
   if (
     !hook.src ||
@@ -681,6 +682,33 @@ const HookOutroTransition: React.FC<{
       <AbsoluteFill
         style={{ backgroundColor: "white", opacity: rampToCutAndBack() }}
       />
+    );
+  }
+
+  if (hook.outroAnimation === "whoosh") {
+    // A true directional (horizontal-only) motion blur of the actual
+    // footage underneath, via backdrop-filter referencing an SVG filter
+    // with an anisotropic feGaussianBlur (stdDeviation "X 0" — blurs
+    // horizontally, leaves vertical structure untouched). Reverse-engineered
+    // from a reference whip-pan clip: pure horizontal smear ramping up
+    // approaching the cut and back down leaving it, no white flash, no RGB
+    // channel split — see GlobalTransition's own "whoosh" branch below for
+    // the same technique and the analysis that led to it.
+    const peakBlur = (width / 1080) * 26;
+    const blurAmount = rampToCutAndBack() * peakBlur;
+    return (
+      <>
+        <svg width={0} height={0} style={{ position: "absolute" }}>
+          <defs>
+            <filter id="rankflow-whoosh-blur-hook">
+              <feGaussianBlur stdDeviation={`${blurAmount} 0`} />
+            </filter>
+          </defs>
+        </svg>
+        <AbsoluteFill
+          style={{ backdropFilter: "url(#rankflow-whoosh-blur-hook)" }}
+        />
+      </>
     );
   }
 
@@ -826,36 +854,39 @@ const GlobalTransition: React.FC<{
       </AbsoluteFill>
     );
   } else if (transition.style === "whoosh") {
-    // A bright, heavily-blurred horizontal streak sweeping across the cut,
-    // plus a couple of thinner accent streaks slightly offset — reads as
-    // fast horizontal motion blur, the "camera whip-pans" look.
-    const sweepXPercent = interpolate(linearProgress, [0, 1], [-40, 140]);
+    // A true directional (horizontal-only) motion blur of the actual
+    // footage underneath — via backdrop-filter referencing an SVG filter
+    // with an anisotropic feGaussianBlur (stdDeviation "X 0": blurs
+    // horizontally, leaves vertical structure completely untouched) —
+    // rather than a light/streak drawn on top of otherwise-sharp footage.
+    //
+    // Reverse-engineered by extracting every frame of a reference whip-pan
+    // clip and measuring horizontal vs. vertical gradient magnitude
+    // through the cut: the horizontal-edge gradient collapsed to ~70% of
+    // baseline right at the cut while the vertical-edge gradient stayed
+    // level (even rose slightly) — the signature of pure horizontal blur,
+    // not a radial/Gaussian blur (which would have dropped both equally).
+    // A per-row R/B channel cross-correlation also found zero horizontal
+    // offset throughout, ruling out any RGB-split/chromatic-aberration
+    // component some "glitch whoosh" edits use. Brightness rose only
+    // gradually across ~15 frames (matching the source footage's own
+    // content panning toward a bright area) and dropped sharply exactly
+    // at the cut — consistent with a hard cut, not a white-flash overlay.
+    const peakBlur = (width / 1080) * 26;
+    const blurAmount = intensity * peakBlur;
     overlay = (
-      <AbsoluteFill style={{ overflow: "hidden", opacity: intensity }}>
+      <>
+        <svg width={0} height={0} style={{ position: "absolute" }}>
+          <defs>
+            <filter id="rankflow-whoosh-blur-global">
+              <feGaussianBlur stdDeviation={`${blurAmount} 0`} />
+            </filter>
+          </defs>
+        </svg>
         <AbsoluteFill
-          style={{
-            background:
-              "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 42%, rgba(255,255,255,0.95) 50%, rgba(255,255,255,0.55) 58%, transparent 100%)",
-            filter: `blur(${10 + intensity * 18}px)`,
-            transform: `translateX(${sweepXPercent}%) skewX(-14deg) scaleX(2.2)`,
-          }}
+          style={{ backdropFilter: "url(#rankflow-whoosh-blur-global)" }}
         />
-        {[0.22, 0.5, 0.78].map((topFraction, i) => (
-          <div
-            key={i}
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: `${topFraction * 100}%`,
-              height: "5%",
-              backgroundColor: "rgba(255,255,255,0.85)",
-              filter: "blur(5px)",
-              transform: `translateX(${sweepXPercent + (i - 1) * 10}%) scaleX(3) skewX(-20deg)`,
-            }}
-          />
-        ))}
-      </AbsoluteFill>
+      </>
     );
   } else if (transition.style === "glitch") {
     // RGB-split + scanlines + jitter — a couple of frame-driven sine waves

@@ -24,7 +24,7 @@ const FPS = 30;
 
 type UploadStatus = "uploading" | "done" | "error";
 export type HookIntroAnimation = "none" | "fade" | "slideUp" | "zoomIn";
-export type HookOutroAnimation = "none" | "fade" | "wipe" | "zoomFlash";
+export type HookOutroAnimation = "none" | "fade" | "wipe" | "zoomFlash" | "whoosh";
 
 export type HookState = {
   file: File | null;
@@ -81,6 +81,7 @@ const OUTRO_OPTIONS: { value: HookOutroAnimation; label: string }[] = [
   { value: "fade", label: "Fade to black" },
   { value: "wipe", label: "Wipe" },
   { value: "zoomFlash", label: "Flash" },
+  { value: "whoosh", label: "Whoosh (motion blur)" },
 ];
 
 /**
